@@ -17,6 +17,7 @@
     "panel": "node scripts/emu-panel.mjs",
     "lab": "node scripts/lab.mjs",
     "emulator": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\emulator.ps1",
+    "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\stop.ps1",
     "device": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\deploy.ps1",
     "release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\release.ps1",
     "gen-assets": "node scripts/gen-assets.mjs",

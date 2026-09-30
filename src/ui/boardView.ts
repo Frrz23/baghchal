@@ -19,6 +19,12 @@ export interface BoardOptions {
   placing: boolean;
   last: Move | null;
   fx: Move | null;
+  /** Tutorial: pulsing guide ring on this node. */
+  hint?: number;
+  /** Tutorial: shake the guiding ring (hint if present, else the selection ring). */
+  shake?: boolean;
+  /** Tutorial: guide arrow from one node to another (drawn above the pieces). */
+  arrow?: { from: number; to: number };
 }
 
 function pieceMarkup(n: number, p: 'T' | 'G', fx: string, style: string): string {
@@ -78,8 +84,16 @@ export function renderBoard(s: GameState, opts: BoardOptions): string {
   }
 
   if (opts.selected !== null) {
+    const shakeCls = opts.shake && opts.hint === undefined ? ' shake' : '';
     parts.push(
-      `<circle class="selected" cx="${nodeX(opts.selected)}" cy="${nodeY(opts.selected)}" r="40"/>`,
+      `<circle class="selected${shakeCls}" cx="${nodeX(opts.selected)}" cy="${nodeY(opts.selected)}" r="40"/>`,
+    );
+  }
+
+  if (opts.hint !== undefined) {
+    const shakeCls = opts.shake ? ' shake' : '';
+    parts.push(
+      `<circle class="hint-ring${shakeCls}" cx="${nodeX(opts.hint)}" cy="${nodeY(opts.hint)}" r="40"/>`,
     );
   }
 
@@ -107,6 +121,13 @@ export function renderBoard(s: GameState, opts: BoardOptions): string {
         '<circle class="piece-goat" r="30"/>' +
         '<text class="piece-emoji" text-anchor="middle" dominant-baseline="central">🐐</text>' +
         '</g></g>',
+    );
+  }
+
+  if (opts.arrow) {
+    const { from, to } = opts.arrow;
+    parts.push(
+      `<line class="tut-arrow" x1="${nodeX(from)}" y1="${nodeY(from)}" x2="${nodeX(to)}" y2="${nodeY(to)}"/>`,
     );
   }
 

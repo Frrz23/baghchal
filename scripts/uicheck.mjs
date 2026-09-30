@@ -74,6 +74,27 @@ try {
   const us = await page.evaluate(() => getComputedStyle(document.documentElement).userSelect);
   check('global user-select: none', us === 'none', us);
 
+  // first-run tutorial: present only if tutSeen is unset (fresh install)
+  const tutBtn = await page.$('[data-act="tut"]');
+  check('menu has learn button', !!tutBtn);
+  const tutLabel = tutBtn ? (await tutBtn.evaluate((el) => el.textContent))?.trim() : '';
+  check(
+    'learn button label',
+    tutLabel === 'खेल सिक्नुहोस्' || tutLabel === 'Learn to play',
+    tutLabel,
+  );
+  const tutOpen0 = !!(await page.$('.tut-card'));
+  if (tutOpen0) {
+    const secs = await page.$$eval('.tut-card .tut-section', (els) => els.length);
+    check('first-run tutorial auto-opened with 8 sections', secs === 8, `sections=${secs}`);
+    await page.click('[data-act="tut-close"]');
+    await page.waitForFunction(() => !document.querySelector('.tut-card'), { timeout: 3000 });
+    const seen = await page.evaluate(() => localStorage.getItem('tutSeen'));
+    check('tutorial close stores tutSeen', seen === '1', seen);
+  } else {
+    console.log('  -- first-run tutorial skipped (tutSeen already stored)');
+  }
+
   const menuM = await page.evaluate(() => {
     const menu = document.querySelector('.menu');
     if (!menu || !menu.children.length) return null;
@@ -148,6 +169,91 @@ try {
   check('selection ring present', !!ring);
   check('ring gold #f7b955', ring === 'rgb(247, 185, 85)', ring);
 
+  // tutorial card under forced insets (worst case: scrollable card in padded box)
+  await page.click('.game-actions [data-act="pause"]');
+  await page.waitForSelector('.pause-card', { timeout: 3000 });
+  await page.click('.pause-card [data-act="menu"]');
+  await page.waitForSelector('[data-act="tut"]', { timeout: 3000 });
+  await page.click('[data-act="tut"]');
+  await page.waitForSelector('.tut-card', { timeout: 3000 });
+  const tut = await page.evaluate(() => {
+    const c = document.querySelector('.tut-card');
+    const o = document.querySelector('.overlay');
+    const r = c.getBoundingClientRect();
+    const canScroll = c.scrollHeight - c.clientHeight;
+    if (canScroll > 4) c.scrollTop = 9999;
+    return {
+      padTop: getComputedStyle(o).paddingTop,
+      top: r.top,
+      bottom: r.bottom,
+      innerH: window.innerHeight,
+      canScroll,
+      scrolledTo: c.scrollTop,
+    };
+  });
+  check('tut overlay pad-top 24+forced', tut.padTop === `${24 + fTop}px`, tut.padTop);
+  check('tut card clears top inset', tut.top >= fTop, `${tut.top} >= ${fTop}`);
+  check('tut card clears bottom inset', tut.bottom <= tut.innerH - fBot + 1, `${tut.bottom} <= ${tut.innerH - fBot}`);
+  check(
+    'tut card scrolls (or fits) under forced insets',
+    tut.canScroll <= 4 || tut.scrolledTo > 0,
+    `canScroll=${Math.round(tut.canScroll)} scrolledTo=${Math.round(tut.scrolledTo)}`,
+  );
+  await page.click('[data-act="tut-close"]');
+  await page.waitForFunction(() => !document.querySelector('.tut-card'), { timeout: 3000 });
+  check('tut card closes from forced-inset state', true);
+
+  // learn screen under forced insets: choose view centers, run view clears bottom
+  await page.click('[data-act="tut"]');
+  await page.waitForSelector('.tut-card', { timeout: 3000 });
+  await page.click('[data-act="tut-next"]');
+  await page.waitForFunction(
+    () => document.getElementById('app').dataset.screen === 'tut',
+    { timeout: 3000 },
+  );
+  const choose = await page.evaluate(() => {
+    const menu = document.querySelector('#app > .menu');
+    const box = menu.getBoundingClientRect();
+    return {
+      phase: document.getElementById('app').dataset.phase,
+      center: (box.top + box.bottom) / 2,
+      ih: window.innerHeight,
+    };
+  });
+  check('learn choose phase set', choose.phase === 'choose', choose.phase);
+  const cd = Math.abs(choose.center - choose.ih / 2);
+  check('choose view centered under forced insets', cd <= 10, `off by ${cd.toFixed(1)}px`);
+
+  await page.click('[data-act="tut-side"][data-side="goat"]');
+  await page.waitForSelector('.tut-instr', { timeout: 3000 });
+  const learn = await page.evaluate(() => {
+    const ga = document.querySelector('.tut-game .game-actions');
+    return {
+      phase: document.getElementById('app').dataset.phase,
+      actionsBottom: ga ? ga.getBoundingClientRect().bottom : null,
+      hasRing: !!document.querySelector('.hint-ring'),
+      hasBoard: !!document.querySelector('.tut-game .board'),
+      instrText: (document.querySelector('.tut-instr')?.textContent || '').trim(),
+      innerH: window.innerHeight,
+    };
+  });
+  check('learn run phase', learn.phase === 'run', learn.phase);
+  check('learn shows board + hint ring', learn.hasBoard && learn.hasRing);
+  check('learn instruction visible', learn.instrText.length > 0, learn.instrText);
+  check(
+    'learn actions clear forced bottom',
+    learn.actionsBottom <= learn.innerH - fBot + 1,
+    `${learn.actionsBottom} <= ${learn.innerH - fBot}`,
+  );
+
+  await page.click('.tut-game [data-act="menu"]');
+  await page.waitForFunction(
+    () => document.getElementById('app').dataset.screen === 'menu',
+    { timeout: 3000 },
+  );
+  const backNoCard = !(await page.$('.tut-card'));
+  check('learn exit returns to menu without reopening rules', backNoCard);
+
   // restore whatever was injected before (remove only if it was absent)
   await page.evaluate(
     (t, b) => {
@@ -170,5 +276,5 @@ try {
   adb(serial, ['forward', '--remove', `tcp:${PORT}`], { allowFail: true });
 }
 
-console.log(fails ? `\nUICHECK FAIL: ${fails} check(s)` : '\nUICHECK OK: safe-area + ring + selection');
+console.log(fails ? `\nUICHECK FAIL: ${fails} check(s)` : '\nUICHECK OK: safe-area + ring + selection + learn');
 process.exit(fails ? 1 : 0);

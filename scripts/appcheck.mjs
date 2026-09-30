@@ -72,6 +72,14 @@ function deviceCss(serial, forceRot) {
   return { w: Math.round(wpx / dpr), h: Math.round(hpx / dpr), dpr };
 }
 
+async function dismissTutorial(page) {
+  if (await page.$('.tut-card')) {
+    await page.click('[data-act="tut-close"]');
+    await page.waitForFunction(() => !document.querySelector('.tut-card'), { timeout: 3000 });
+    await sleep(150);
+  }
+}
+
 async function playFlow(page, report, size, key, { shots }) {
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));
@@ -80,6 +88,7 @@ async function playFlow(page, report, size, key, { shots }) {
   });
 
   await page.waitForSelector('[data-act="pick-ai"]', { timeout: 10000 });
+  await dismissTutorial(page); // first-run overlay would swallow the taps below
   if (shots) shot(serial, `${OUT}/${key}-menu.png`, report, size.name);
   await assertCommon(page, size, 'menu', report);
 
@@ -230,6 +239,7 @@ try {
       hasTouch: true,
     });
     await page.waitForSelector('[data-act="pick-ai"]', { timeout: 10000 });
+    await dismissTutorial(page);
     await tap(page, '[data-act="pick-ai"]');
     await page.waitForSelector('[data-act="side"][data-side="goat"]', { timeout: 5000 });
     await tap(page, '[data-act="side"][data-side="goat"]');

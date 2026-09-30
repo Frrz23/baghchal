@@ -28,7 +28,189 @@ mkdirSync('.smoke', { recursive: true });
 try {
   await page.goto(BASE, { waitUntil: 'networkidle0', timeout: 15000 });
   await page.waitForSelector('[data-act="pick-ai"]', { timeout: 5000 });
+
+  // --- first-run tutorial (fresh profile every run) ---
+  await page.waitForSelector('.tut-card', { timeout: 5000 });
+  const tutSections = await page.$$eval('.tut-card .tut-section', (els) => els.length);
+  if (tutSections !== 8) fail(`expected 8 tutorial sections, got ${tutSections}`);
+  const tutBefore = await page.evaluate(() => localStorage.getItem('tutSeen'));
+  if (tutBefore !== null) fail(`tutSeen should be unset before close, got ${tutBefore}`);
+  await page.screenshot({ path: '.smoke/tutorial.png' });
+  await page.click('[data-act="tut-close"]');
+  if (await page.$('.tut-card')) fail('tut-close did not close the tutorial');
+  const tutAfter = await page.evaluate(() => localStorage.getItem('tutSeen'));
+  if (tutAfter !== '1') fail(`tutSeen not persisted after close, got ${tutAfter}`);
+
+  // persistence: reload must NOT auto-open again
+  await page.reload({ waitUntil: 'networkidle0', timeout: 15000 });
+  await page.waitForSelector('[data-act="pick-ai"]', { timeout: 5000 });
+  if (await page.$('.tut-card')) fail('tutorial auto-opened on reload despite tutSeen=1');
+
+  // reopen from the menu button, then close again
+  await page.click('[data-act="tut"]');
+  await page.waitForSelector('.tut-card', { timeout: 3000 });
+  await page.click('[data-act="tut-close"]');
+  if (await page.$('.tut-card')) fail('tutorial did not close after reopen');
+
+  // --- learn screen: guided taps through the WHOLE goat track, finish buttons, other side ---
+  await page.click('[data-act="tut"]');
+  await page.waitForSelector('.tut-card', { timeout: 3000 });
+  await page.click('[data-act="tut-next"]');
+  await page.waitForFunction(
+    () => document.getElementById('app').dataset.screen === 'tut',
+    { timeout: 3000 },
+  );
+  const phaseChoose = await page.evaluate(() => document.getElementById('app').dataset.phase);
+  if (phaseChoose !== 'choose') fail(`expected choose phase, got "${phaseChoose}"`);
+  if (!(await page.$('[data-act="tut-side"]'))) fail('choose view has no side buttons');
+  await page.click('[data-act="tut-side"][data-side="goat"]');
+  await page.waitForSelector('.tut-instr', { timeout: 3000 });
+  if (!(await page.$('.hint-ring'))) fail('place step should show a hint ring');
+  if (await page.$('.board .target')) fail('place step must be ring-only (no place-dots)');
+  const step0 = await page.$eval('.tut-dots', (el) => el.dataset.step);
+  if (step0 !== '0') fail(`expected step 0 after side pick, got ${step0}`);
+
+  // wrong tap: step must not advance, ring shakes
+  await page.click('[data-node="0"]');
+  const still0 = await page.$eval('.tut-dots', (el) => el.dataset.step);
+  if (still0 !== '0') fail(`wrong tap advanced to step ${still0}`);
+  if (!(await page.$('.hint-ring.shake'))) fail('wrong tap did not shake the hint ring');
+  await page.screenshot({ path: '.smoke/tut-learn.png' });
+
+  // correct tap DURING the shake window must still advance
+  await page.click('[data-node="12"]');
+  await page.waitForFunction(
+    () => document.querySelector('.tut-dots')?.dataset.step === '1',
+    { timeout: 3000 },
+  );
+  // step 1 = watch: auto chain plays the tiger reply (1400ms), then advances to step 2
+  await page.waitForFunction(
+    () => document.querySelector('.tut-dots')?.dataset.step === '2',
+    { timeout: 6000 },
+  );
+  if (!(await page.$('.hint-ring'))) fail('place2 step should show a hint ring');
+  const piecesAfterWatch = await page.$$eval('.piece', (els) => els.length);
+  if (piecesAfterWatch !== 5) fail(`expected 5 pieces after place+tiger reply, got ${piecesAfterWatch}`);
+
+  // 2nd goat -> fast-forward step: board must stay small until the user taps
+  await page.click('[data-node="13"]');
+  await page.waitForFunction(
+    () => document.querySelector('.tut-dots')?.dataset.step === '3',
+    { timeout: 3000 },
+  );
+  if (!(await page.$('[data-act="tut-ff"]'))) fail('fast-forward step should show the fill button');
+  const beforeFill = await page.$$eval('.piece', (els) => els.length);
+  if (beforeFill !== 6) fail(`board must stay at 6 pieces before the tap, got ${beforeFill}`);
+  await page.screenshot({ path: '.smoke/tut-fastforward.png' });
+  await page.click('[data-act="tut-ff"]');
+  await page.waitForFunction(
+    () => document.querySelector('.tut-dots')?.dataset.step === '4',
+    { timeout: 3000 },
+  );
+  const instrAll = await page.$eval('.tut-instr', (el) => el.textContent || '');
+  if (!instrAll.includes('२०')) fail(`all-placed narration missing, got "${instrAll}"`);
+  const allPlacedPieces = await page.$$eval('.piece', (els) => els.length);
+  if (allPlacedPieces !== 24) fail(`expected 24 pieces after fast-forward, got ${allPlacedPieces}`);
+  await page.waitForFunction(
+    () => document.querySelector('.tut-dots')?.dataset.step === '5',
+    { timeout: 5000 },
+  );
+
+  // select the ringed goat, guide arrow appears, step it into the centre hole
+  await page.click('[data-node="11"]');
+  if (!(await page.$('.tut-arrow'))) fail('selected goat should show the guide arrow');
+  await page.click('[data-node="12"]');
+  await page.waitForFunction(
+    () => document.querySelector('.tut-dots')?.dataset.step === '6',
+    { timeout: 3000 },
+  );
+  // win beat (all tigers blocked) auto-advances to the finish screen
+  await page.waitForFunction(
+    () => document.querySelector('.tut-dots')?.dataset.step === '7',
+    { timeout: 5000 },
+  );
+
+  // finish screen: 3 buttons, gold = side-explicit other-side, block centered
+  const finBtns = await page.$$eval('.tut-game .menu-buttons .btn', (els) =>
+    els.map((b) => ({ act: b.getAttribute('data-act'), text: (b.textContent || '').trim() })),
+  );
+  if (finBtns.length !== 3) fail(`expected 3 finish buttons, got ${finBtns.length}`);
+  if (finBtns[0].act !== 'tut-other' || !finBtns[0].text.includes('🐅'))
+    fail(`gold should be side-explicit other-side, got ${JSON.stringify(finBtns[0])}`);
+  if (finBtns[1].act !== 'tut-start') fail(`second button should be tut-start, got ${finBtns[1].act}`);
+  const fin = await page.evaluate(() => {
+    const b = document.querySelector('.tut-game .menu-buttons');
+    const r = b.getBoundingClientRect();
+    return { cx: r.left + r.width / 2, mid: window.innerWidth / 2 };
+  });
+  if (Math.abs(fin.cx - fin.mid) > 10)
+    fail(`finish buttons not centered: block cx=${Math.round(fin.cx)}, viewport mid=${Math.round(fin.mid)}`);
+  await page.screenshot({ path: '.smoke/tut-final.png' });
+
+  // "learn other side" = tiger teaching (board + ring), NOT a game
+  await page.click('[data-act="tut-other"]');
+  await page.waitForFunction(
+    () =>
+      document.getElementById('app').dataset.screen === 'tut' &&
+      document.querySelector('.tut-dots')?.dataset.step === '0',
+    { timeout: 3000 },
+  );
+  if (!(await page.$('.hint-ring'))) fail('tiger track should start with a hint ring');
+  const tInstr = await page.$eval('.tut-instr', (el) => el.textContent || '');
+  if (!tInstr.includes('बाघ')) fail(`expected tiger instruction after other-side, got "${tInstr}"`);
+  if (await page.$('[data-act="undo"]')) fail('other side landed on a game instead of teaching');
+
+  // exit mid-flow: back to menu, no rules card reopened, tutSeen still set
+  await page.click('.tut-game [data-act="menu"]');
+  await page.waitForFunction(
+    () => document.getElementById('app').dataset.screen === 'menu',
+    { timeout: 3000 },
+  );
+  if (await page.$('.tut-card')) fail('rules card reopened after learn exit');
+  const seenAfterLearn = await page.evaluate(() => localStorage.getItem('tutSeen'));
+  if (seenAfterLearn !== '1') fail(`tutSeen lost after learn flow, got ${seenAfterLearn}`);
   await page.screenshot({ path: '.smoke/menu.png' });
+
+  // re-enter, walk the tiger track to its finish, Start playing -> setup (not a game)
+  await page.click('[data-act="tut"]');
+  await page.waitForSelector('.tut-card', { timeout: 3000 });
+  await page.click('[data-act="tut-next"]');
+  await page.waitForFunction(
+    () =>
+      document.getElementById('app').dataset.screen === 'tut' &&
+      document.getElementById('app').dataset.phase === 'choose',
+    { timeout: 3000 },
+  );
+  await page.click('[data-act="tut-side"][data-side="tiger"]');
+  await page.waitForSelector('.tut-instr', { timeout: 3000 });
+  await page.click('[data-node="0"]'); // select tiger
+  await page.click('[data-node="1"]'); // step 0 -> 1
+  await page.waitForFunction(
+    () => document.querySelector('.tut-dots')?.dataset.step === '1',
+    { timeout: 3000 },
+  );
+  await page.click('[data-node="0"]'); // select on the jump position
+  await page.click('[data-node="2"]'); // jump over the ringed goat
+  await page.waitForFunction(
+    () => document.querySelector('.tut-dots')?.dataset.step === '2',
+    { timeout: 3000 },
+  );
+  await page.waitForFunction(
+    () => document.querySelector('.tut-dots')?.dataset.step === '3',
+    { timeout: 5000 },
+  );
+  await page.click('[data-act="tut-start"]');
+  await page.waitForFunction(
+    () => document.getElementById('app').dataset.screen === 'side',
+    { timeout: 3000 },
+  );
+  if (await page.$('[data-act="undo"]')) fail('tut-start started a live game instead of setup');
+  if (!(await page.$('[data-act="side"]'))) fail('setup screen missing side buttons');
+  await page.click('[data-act="menu"]');
+  await page.waitForFunction(
+    () => document.getElementById('app').dataset.screen === 'menu',
+    { timeout: 3000 },
+  );
 
   // --- vs AI flow ---
   await page.click('[data-act="pick-ai"]');
@@ -217,7 +399,7 @@ try {
   if (fresh !== 4) fail(`new game should show 4 tigers, got ${fresh}`);
 
   if (errors.length) fail('page errors occurred');
-  console.log('SMOKE OK: menu, vs-AI, placement, AI reply, pause/resume/reset, selection, move, last-move, move list, undo, last-move toggle (line+dots+history), lang, difficulty, win overlay');
+  console.log('SMOKE OK: first-run tutorial (auto-open/close/persist/reopen), learn screen (choose/goat track/tap-to-fill fast-forward/wrong-tap shake/centered finish/other-side teaching/tiger track/start-playing setup/exit), menu, vs-AI, placement, AI reply, pause/resume/reset, selection, move, last-move, move list, undo, last-move toggle (line+dots+history), lang, difficulty, win overlay');
   await browser.close();
   process.exit(0);
 } catch (e) {

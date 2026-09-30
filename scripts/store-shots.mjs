@@ -90,6 +90,12 @@ try {
 
   // 1 - main menu
   await page.waitForSelector('[data-act="pick-ai"]', { timeout: 10000 });
+  // first-run tutorial (fresh installs) - dismiss BEFORE any screenshot
+  if (await page.$('.tut-card')) {
+    await tap(page, '[data-act="tut-close"]');
+    await page.waitForFunction(() => !document.querySelector('.tut-card'), { timeout: 3000 });
+    await sleep(200);
+  }
   shot(serial, `${OUT}/01-menu.png`);
 
   // 2 - side + difficulty screen

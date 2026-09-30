@@ -1,12 +1,21 @@
 import { Difficulty } from '../game/ai';
 import { playSound, setSoundEnabled, SoundName } from '../game/audio';
 import { GameEngine } from '../game/engine';
-import { Move, Outcome, Side, legalMoves } from '../game/rules';
+import {
+  GameState,
+  Move,
+  Outcome,
+  Side,
+  applyMove,
+  initialState,
+  legalMoves,
+} from '../game/rules';
 import { colOf, rowOf } from '../game/board';
 import { renderBoard, Target } from './boardView';
 import { lang, num, setLang, t } from './i18n';
+import { TUT_SCENARIOS, TutSide } from './tutScript';
 
-type Screen = 'menu' | 'side' | 'game';
+type Screen = 'menu' | 'side' | 'game' | 'tut';
 type Mode = 'ai' | 'local';
 
 interface AiResponse {
@@ -44,12 +53,25 @@ export class App {
   private difficulty: Difficulty = (localStorage.getItem('difficulty') as Difficulty) || 'medium';
   private soundOn = loadBool('sound', true);
   private showLastMove = loadBool('lastMove', true);
+  private tutorial = !loadBool('tutSeen', false);
   private selected: number | null = null;
   private thinking = false;
   private paused = false;
   private gameId = 0;
   private pendingFx: Move | null = null;
   private worker: Worker;
+  /* learn screen (interactive tutorial). tutRun is a cancellation token: every
+     tut-owned timeout captures it at schedule time and returns before touching
+     state if it went stale (exit/scenario switch/new game bumps it). */
+  private tutRun = 0;
+  private tutPhase: 'choose' | 'run' = 'choose';
+  private tutSide: TutSide = 'goat';
+  private tutIdx = 0;
+  private tutState: GameState | null = null;
+  private tutSelected: number | null = null;
+  private tutShake = false;
+  private tutBusy = false;
+  private tutFx: Move | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -70,7 +92,8 @@ export class App {
     if (!el) return;
     const act = el.getAttribute('data-act');
     if (act === 'node') {
-      this.onNode(Number(el.getAttribute('data-node')));
+      if (this.screen === 'tut') this.onTutNode(Number(el.getAttribute('data-node')));
+      else this.onNode(Number(el.getAttribute('data-node')));
       return;
     }
     switch (act) {
@@ -141,10 +164,49 @@ export class App {
         this.sound('tap');
         this.render();
         break;
+      case 'tut':
+        this.sound('tap');
+        this.tutorial = true;
+        this.render();
+        break;
+      case 'tut-close':
+        this.tutorial = false;
+        localStorage.setItem('tutSeen', '1');
+        this.sound('tap');
+        this.render();
+        break;
+      case 'tut-next':
+        this.sound('tap');
+        this.tutorial = false;
+        localStorage.setItem('tutSeen', '1');
+        this.enterTut();
+        break;
+      case 'tut-side': {
+        const side = el.getAttribute('data-side') as TutSide;
+        if (side !== 'goat' && side !== 'tiger') break;
+        this.sound('tap');
+        this.startScenario(side);
+        break;
+      }
+      case 'tut-other':
+        this.sound('tap');
+        this.startScenario(this.tutSide === 'goat' ? 'tiger' : 'goat');
+        break;
+      case 'tut-ff':
+        this.sound('tap');
+        this.advanceTut();
+        break;
+      case 'tut-start':
+        this.sound('tap');
+        this.exitTut();
+        this.screen = 'side';
+        this.render();
+        break;
     }
   }
 
   private goMenu(): void {
+    this.exitTut();
     this.gameId++;
     this.screen = 'menu';
     this.thinking = false;
@@ -155,6 +217,7 @@ export class App {
   }
 
   private newGame(mode: Mode, side: Side): void {
+    this.exitTut();
     this.mode = mode;
     this.playerSide = side;
     this.engine = new GameEngine();
@@ -332,6 +395,174 @@ export class App {
     }
   }
 
+  /* ---------- learn screen (interactive tutorial) ---------- */
+
+  /** Cancels every pending tut timeout (bumps the token) and clears tut fields. */
+  private exitTut(): void {
+    this.tutRun++;
+    this.tutPhase = 'choose';
+    this.tutIdx = 0;
+    this.tutState = null;
+    this.tutSelected = null;
+    this.tutShake = false;
+    this.tutBusy = false;
+    this.tutFx = null;
+  }
+
+  private enterTut(): void {
+    this.exitTut();
+    this.screen = 'tut';
+    this.render();
+  }
+
+  private tutSteps() {
+    return TUT_SCENARIOS[this.tutSide].steps;
+  }
+
+  private tutStep() {
+    return this.tutSteps()[this.tutIdx];
+  }
+
+  private startScenario(side: TutSide): void {
+    this.exitTut();
+    this.tutSide = side;
+    this.tutPhase = 'run';
+    this.tutIdx = 0;
+    const first = TUT_SCENARIOS[side].steps[0];
+    this.tutState = first.state ?? initialState();
+    this.screen = 'tut';
+    this.startStep();
+  }
+
+  /** Enters the current step: load its crafted state, then schedule any
+      watch/info auto-play. Renders once at the end. */
+  private startStep(): void {
+    const step = this.tutStep();
+    if (step.state) this.tutState = step.state;
+    this.tutSelected = null;
+    this.tutShake = false;
+    this.tutFx = null;
+    this.tutBusy = false;
+    const run = this.tutRun;
+    if (step.auto && step.auto.length > 0 && !step.expect) {
+      this.tutBusy = true;
+      this.chainAuto(step.auto, 0, run, step.delay ?? 900, 700);
+    } else if (step.info) {
+      this.tutBusy = true;
+      window.setTimeout(() => {
+        if (run !== this.tutRun) return; // cancelled: no state/render on stale timer
+        this.tutBusy = false;
+        this.advanceTut();
+      }, step.delay ?? 1600);
+    }
+    this.render();
+  }
+
+  private chainAuto(moves: Move[], i: number, run: number, firstDelay: number, gap: number): void {
+    window.setTimeout(() => {
+      if (run !== this.tutRun) return; // cancelled: no state/render on stale timer
+      const m = moves[i];
+      if (!this.tutState) return;
+      try {
+        this.tutState = applyMove(this.tutState, m);
+      } catch (err) {
+        console.error('tutorial auto move failed', err);
+        return;
+      }
+      this.tutFx = m;
+      this.soundForMove(m);
+      this.render();
+      if (i + 1 < moves.length) this.chainAuto(moves, i + 1, run, gap, gap);
+      else {
+        window.setTimeout(() => {
+          if (run !== this.tutRun) return; // cancelled: no advance on stale timer
+          this.tutBusy = false;
+          this.advanceTut();
+        }, gap);
+      }
+    }, firstDelay);
+  }
+
+  private advanceTut(): void {
+    const steps = this.tutSteps();
+    if (this.tutIdx >= steps.length - 1) {
+      this.render();
+      return;
+    }
+    this.tutIdx++;
+    this.startStep();
+  }
+
+  private shakeTut(): void {
+    if (this.tutShake) return; // dedupe: mashing wrong taps never stacks shakes
+    this.tutShake = true;
+    this.render();
+    const run = this.tutRun;
+    window.setTimeout(() => {
+      if (run !== this.tutRun) return; // cancelled: no render on stale timer
+      this.tutShake = false;
+      this.render();
+    }, 450);
+  }
+
+  private onTutNode(n: number): void {
+    if (this.tutPhase !== 'run' || this.tutBusy) return;
+    const step = this.tutStep();
+    const exp = step.expect;
+    if (!exp || !this.tutState) return;
+
+    if (exp.kind === 'place') {
+      if (n === exp.to) this.performTut(exp);
+      else this.shakeTut();
+      return;
+    }
+
+    if (this.tutSelected === null) {
+      if (n === step.tapPiece) {
+        this.tutSelected = n;
+        this.tutShake = false;
+        this.sound('tap');
+        this.render();
+      } else this.shakeTut();
+      return;
+    }
+
+    if (n === step.tapPiece) return; // re-tap of the selected piece: no-op
+    if (
+      (exp.kind === 'step' || exp.kind === 'jump') &&
+      exp.from === this.tutSelected &&
+      n === exp.to
+    ) {
+      this.performTut(exp);
+      return;
+    }
+    this.shakeTut();
+  }
+
+  private performTut(m: Move): void {
+    if (!this.tutState) return;
+    try {
+      this.tutState = applyMove(this.tutState, m);
+    } catch (err) {
+      console.error('tutorial scripted move failed', err);
+      return;
+    }
+    this.tutFx = m;
+    this.tutSelected = null;
+    this.tutShake = false;
+    this.tutBusy = false;
+    this.soundForMove(m);
+    const step = this.tutStep();
+    const run = this.tutRun;
+    if (step.auto && step.auto.length > 0) {
+      this.tutBusy = true;
+      this.render();
+      this.chainAuto(step.auto, 0, run, 700, 700);
+    } else {
+      this.advanceTut();
+    }
+  }
+
   private controlsView(withSound = true, withLastMove = false): string {
     const soundIcon = this.soundOn ? '🔊' : '🔇';
     return `
@@ -353,6 +584,7 @@ export class App {
         <div class="menu-buttons">
           <button class="btn btn-primary" data-act="pick-ai">${t('modeAI')}</button>
           <button class="btn" data-act="local">${t('modeLocal')}</button>
+          <button class="btn btn-ghost" data-act="tut">${t('tutOpen')}</button>
         </div>
       </div>`;
   }
@@ -476,11 +708,131 @@ export class App {
       ${overlay}`;
   }
 
+  private tutorialView(): string {
+    const section = (icon: string, key: string): string =>
+      `<div class="tut-section"><span class="tut-ico">${icon}</span><p>${t(key)}</p></div>`;
+    return `
+      <div class="overlay">
+        <div class="card tut-card">
+          <h2>📖 ${t('tutTitle')}</h2>
+          ${section('🎯', 'tutGoalT')}
+          ${section('🐐', 'tutGoalG')}
+          ${section('🐅', 'tutSetup')}
+          ${section('📍', 'tutPlace')}
+          ${section('👆', 'tutMove')}
+          ${section('🦘', 'tutJump')}
+          ${section('🏅', 'tutWin')}
+          ${section('💡', 'tutTips')}
+          <div class="menu-buttons">
+            <button class="btn btn-primary" data-act="tut-next">${t('tutNext')}</button>
+            <button class="btn btn-ghost" data-act="tut-close">${t('tutClose')}</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  private tutView(): string {
+    if (this.tutPhase === 'choose' || !this.tutState) {
+      return `
+      ${this.controlsView()}
+      <div class="menu">
+        <p class="prompt">${t('tutChooseTitle')}</p>
+        <div class="menu-buttons">
+          <button class="btn btn-goat" data-act="tut-side" data-side="goat">🐐 ${t('asGoat')}</button>
+          <button class="btn btn-tiger" data-act="tut-side" data-side="tiger">🐅 ${t('asTiger')}</button>
+          <button class="btn btn-ghost" data-act="menu">${t('back')}</button>
+        </div>
+      </div>`;
+    }
+
+    const step = this.tutStep();
+    const st = this.tutState;
+    const exp = step.expect;
+    const emoji = this.tutSide === 'goat' ? '🐐' : '🐅';
+    const textKey = this.tutSelected !== null && step.text2 ? step.text2 : step.text;
+    const instr = step.final && step.goalKey ? t(step.goalKey) : t(textKey);
+
+    let selected: number | null = null;
+    let targets: Target[] = [];
+    let hint: number | undefined;
+    let arrow: { from: number; to: number } | undefined;
+    if (exp && !step.final) {
+      if (this.tutSelected === null) {
+        hint = step.hint;
+      } else {
+        selected = this.tutSelected;
+        targets = legalMoves(st)
+          .filter((m) => (m.kind === 'step' || m.kind === 'jump') && m.from === selected)
+          .map((m) =>
+            m.kind === 'jump'
+              ? { to: m.to, capture: true, over: m.over }
+              : { to: m.to, capture: false },
+          );
+        arrow = { from: selected, to: exp.to };
+      }
+    }
+
+    const fx = this.tutFx;
+    this.tutFx = null;
+    const board = renderBoard(st, {
+      selected,
+      targets,
+      placing: false,
+      last: null,
+      fx,
+      hint,
+      shake: this.tutShake || undefined,
+      arrow,
+    });
+    const dots = this.tutSteps()
+      .map(
+        (_, i) =>
+          `<span class="tut-dot${i === this.tutIdx ? ' active' : i < this.tutIdx ? ' done' : ''}"></span>`,
+      )
+      .join('');
+    let actions: string;
+    if (step.final) {
+      actions = `<div class="menu-buttons">
+           <button class="btn btn-primary" data-act="tut-other">${t(this.tutSide === 'goat' ? 'tutNextTiger' : 'tutNextGoat')}</button>
+           <button class="btn" data-act="tut-start">${t('tutStart')}</button>
+           <button class="btn btn-ghost" data-act="menu">${t('menu')}</button>
+         </div>`;
+    } else if (step.tapBtn) {
+      actions = `<div class="menu-buttons">
+           <button class="btn btn-primary" data-act="tut-ff">${t(step.tapBtn)}</button>
+           <button class="btn btn-ghost" data-act="menu">${t('menu')}</button>
+         </div>`;
+    } else {
+      actions = `<div class="game-actions">
+           <button class="btn btn-ghost" data-act="menu">${t('menu')}</button>
+         </div>`;
+    }
+    return `
+      <div class="game tut-game">
+        ${this.controlsView(false)}
+        <header class="topbar">
+          <div class="turn tut-instr"><span class="turn-emoji">${emoji}</span>${instr}</div>
+          <div class="counts">
+            <span>🐐 ${t('inHand')} ${num(st.goatsInHand)}</span>
+            <span>✕ ${t('captured')} ${num(st.goatsCaptured)}</span>
+          </div>
+        </header>
+        <div class="board-wrap">${board}</div>
+        <div class="tut-dots" data-step="${this.tutIdx}">${dots}</div>
+        ${actions}
+      </div>`;
+  }
+
   private render(): void {
     this.root.dataset.screen = this.screen;
-    if (this.screen === 'menu') this.root.innerHTML = this.menuView();
-    else if (this.screen === 'side') this.root.innerHTML = this.sideView();
-    else this.root.innerHTML = this.gameView();
+    this.root.dataset.phase = this.screen === 'tut' ? this.tutPhase : '';
+    let html: string;
+    if (this.screen === 'menu') html = this.menuView();
+    else if (this.screen === 'side') html = this.sideView();
+    else if (this.screen === 'tut') html = this.tutView();
+    else html = this.gameView();
+    if (this.tutorial && this.screen === 'menu') html += this.tutorialView();
+    this.root.innerHTML = html;
     const history = this.root.querySelector('.history:not(.empty)');
     if (history) history.scrollLeft = history.scrollWidth;
   }

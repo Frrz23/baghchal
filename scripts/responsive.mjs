@@ -62,6 +62,14 @@ mkdirSync(outDir, { recursive: true });
 
 for (const c of cases) {
   const page = await browser.newPage();
+  // seed before first page script runs: first-run tutorial must never auto-open,
+  // so the screenshots/centering asserts below always measure the real menu
+  // (try/catch: about:blank has an opaque origin where localStorage throws)
+  await page.evaluateOnNewDocument(() => {
+    try {
+      localStorage.setItem('tutSeen', '1');
+    } catch {}
+  });
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));
   page.on('console', (m) => {

@@ -88,6 +88,23 @@ body {
   justify-content: safe center;
 }
 
+/* learn screen: choose phase mirrors/centers like menu; run phase keeps the
+   exact game-screen padding (data-phase set by render() with data-screen) */
+#app[data-screen='tut'][data-phase='choose'] {
+  padding-bottom: calc(16px + var(--safe-top));
+}
+
+#app[data-screen='tut'][data-phase='choose'] > .controls {
+  position: absolute;
+  top: calc(16px + var(--safe-top));
+  right: 16px;
+}
+
+#app[data-screen='tut'][data-phase='choose'] > .menu {
+  justify-content: center;
+  justify-content: safe center;
+}
+
 .menu-art {
   font-size: 64px;
   letter-spacing: -14px;
@@ -128,6 +145,28 @@ body {
   gap: 12px;
   width: 100%;
   max-width: 340px;
+}
+
+/* short viewports (landscape phones ~411px): compact the menu so all three
+   buttons fit - .menu is flex:1 with min-height:auto, so overflowing content
+   stretches the box past the viewport and breaks vertical centering */
+@media (max-height: 520px) {
+  .menu {
+    gap: 6px;
+  }
+  .menu-art {
+    font-size: 40px;
+    margin-bottom: 0;
+  }
+  .title {
+    font-size: 36px;
+  }
+  .subtitle {
+    font-size: 14px;
+  }
+  .pieces-line {
+    margin-bottom: 0;
+  }
 }
 
 /* ---------- buttons ---------- */
@@ -413,6 +452,155 @@ body {
 .pause-card .controls {
   justify-content: center;
 }
+
+/* ---------- tutorial ---------- */
+
+.tut-card {
+  max-width: 400px;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  align-items: stretch;
+  text-align: left;
+  gap: 10px;
+  padding: 24px 22px;
+}
+
+.tut-card h2 {
+  text-align: center;
+  font-size: 24px;
+  margin-bottom: 2px;
+}
+
+.tut-section {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.tut-section .tut-ico {
+  font-size: 17px;
+  line-height: 1.5;
+  flex: none;
+}
+
+.tut-section p {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+
+.tut-card .menu-buttons {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.tut-card .menu-buttons .btn {
+  width: 100%;
+}
+
+/* ---------- learn screen (interactive tutorial) ---------- */
+
+.tut-instr {
+  white-space: normal;
+  line-height: 1.4;
+  max-width: 100%;
+}
+
+/* .game cross-axis is stretch, so the 340px-capped button block sat flush
+   left on the finish screen — center it explicitly */
+.tut-game .menu-buttons {
+  align-self: center;
+  text-align: center;
+}
+
+.tut-dots {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  min-height: 8px;
+}
+
+.tut-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(243, 233, 216, 0.25);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.tut-dot.done {
+  background: rgba(247, 185, 85, 0.55);
+}
+
+.tut-dot.active {
+  background: #f7b955;
+  transform: scale(1.35);
+}
+
+.hint-ring {
+  fill: none;
+  stroke: #f7b955;
+  stroke-width: 5;
+  stroke-dasharray: 10 8;
+  animation: pulse 1.3s ease-in-out infinite, spin-dash 3s linear infinite;
+  pointer-events: none;
+}
+
+.tut-arrow {
+  stroke: #f7b955;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 14 10;
+  animation: arrow-dash 1.4s linear infinite;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+/* wrong-tap feedback: one animation, never stacked (tutShake is a single
+   field and render() rebuilds the DOM, so at most one shake exists) */
+.shake {
+  animation: ring-shake 0.4s ease;
+}
+
+@keyframes ring-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-6px);
+  }
+  50% {
+    transform: translateX(6px);
+  }
+  75% {
+    transform: translateX(-4px);
+  }
+}
+
+@keyframes arrow-dash {
+  to {
+    stroke-dashoffset: -48;
+  }
+}
+
+/* desktop "hover and show": enlarge guides under the pointer (touch devices
+   rely on the pulse + arrow instead) */
+@media (hover: hover) and (pointer: fine) {
+  .board .target,
+  .board .hint-ring {
+    transform-box: fill-box;
+    transform-origin: center;
+    transition: transform 0.15s ease;
+  }
+  .board .target:hover,
+  .board .hint-ring:hover {
+    transform: scale(1.3);
+  }
+}
+
 
 @keyframes pulse {
   0%,
