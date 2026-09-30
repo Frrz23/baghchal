@@ -17,7 +17,16 @@ function deviceCss(serial) {
   const dens = [...densOut.matchAll(/(?:Physical|Override) density:\s*(\d+)/g)];
   if (!dens.length) throw new Error(`cannot read wm density: ${densOut}`);
   const dpr = Number(dens.at(-1)[1]) / 160;
-  return { w: Math.round(Number(sw) / dpr), h: Math.round(Number(sh) / dpr), dpr };
+  return { w: Math.round(Number(sw) / dpr), sh: Number(sh), dpr };
+}
+
+// The window sits below the status bar (not edge-to-edge here): CDP's CSS
+// viewport must match the real window, or content renders shifted down by the
+// bar and the bottom is painted off-screen (screencap kept showing +45css).
+function statusBarTopPx(serial) {
+  const out = adb(serial, ['shell', 'dumpsys', 'window', 'displays']);
+  const m = /type=statusBars\s+frame=\[0,0\]\[(\d+),(\d+)\]/.exec(out);
+  return m ? Number(m[2]) : 0;
 }
 
 function shot(serial, file) {
@@ -73,7 +82,10 @@ console.log(`STORE-SHOTS on ${serial}`);
 const { browser, page } = await relaunchAndConnect(serial);
 try {
   const real = deviceCss(serial);
-  await page.setViewport({ width: real.w, height: real.h, deviceScaleFactor: real.dpr, isMobile: true, hasTouch: true });
+  const statusTop = statusBarTopPx(serial);
+  const winH = Math.round((real.sh - statusTop) / real.dpr);
+  console.log(`viewport: ${real.w}x${winH} @${real.dpr} (status bar top=${statusTop}px)`);
+  await page.setViewport({ width: real.w, height: winH, deviceScaleFactor: real.dpr, isMobile: true, hasTouch: true });
   await sleep(500);
 
   // 1 - main menu

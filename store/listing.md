@@ -79,6 +79,7 @@ Screenshots order: 01 menu · 02 side + difficulty · 03 mid-game · 04 pause + 
 ## Console settings (M5)
 
 - Package: `np.baghchal.game` (locked) · version 1.0 (versionCode 1)
+- **Versioning: versionCode 1 (r1) is spent on first upload — before every later upload, bump `versionCode` in `android/app/build.gradle` (→ r2, r3…); `release.ps1` derives artifact names automatically (`baghchal-1.0-r2-release.*`). Bump `versionName` only per meaningful update.**
 - Category: Games › Board · Tags: strategy, offline, nepali
 - Content rating: complete questionnaire (violence None, multiplayer None, ads None, IAP None)
 - Data safety: no data collected — the app has zero network use and zero permissions

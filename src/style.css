@@ -5,6 +5,28 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* safe area: env() = what the WebView reports (modern WebViews),
+   --safe-area-inset-* = injected by Capacitor's SystemBars plugin.
+   Both describe the same physical overlap, so max() not sum;
+   0px fallbacks keep desktop/dev pixel-identical. */
+:root {
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+}
+
+html {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* opt-in escape hatch for future copyable strings (versions, seeds, errors) */
+.selectable {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+
 html,
 body {
   height: 100%;
@@ -26,6 +48,8 @@ body {
   display: flex;
   flex-direction: column;
   padding: 16px;
+  padding-top: calc(16px + var(--safe-top));
+  padding-bottom: calc(16px + var(--safe-bottom));
   position: relative;
 }
 
@@ -39,6 +63,29 @@ body {
   justify-content: center;
   gap: 10px;
   text-align: center;
+}
+
+/* menu/side screens (data-screen set by render()): pad-bottom mirrors pad-top so
+   .menu's centered box sits exactly at viewport middle (safe-top is what makes
+   top/bottom differ on phones); controls pin top-right out of flow, same spot
+   as before. Attribute selectors instead of :has() - minSdk 24 allows WebViews
+   older than Chromium 105 where :has() is silently dropped. */
+#app[data-screen='menu'],
+#app[data-screen='side'] {
+  padding-bottom: calc(16px + var(--safe-top));
+}
+
+#app[data-screen='menu'] > .controls,
+#app[data-screen='side'] > .controls {
+  position: absolute;
+  top: calc(16px + var(--safe-top));
+  right: 16px;
+}
+
+#app[data-screen='menu'] > .menu,
+#app[data-screen='side'] > .menu {
+  justify-content: center;
+  justify-content: safe center;
 }
 
 .menu-art {
@@ -176,7 +223,7 @@ body {
 }
 
 .board-wrap {
-  width: min(100%, 640px, calc(100dvh - 260px));
+  width: min(100%, 640px, calc(100dvh - 260px - var(--safe-top) - var(--safe-bottom)));
   margin-inline: auto;
 }
 
@@ -227,7 +274,7 @@ body {
 
 .selected {
   fill: none;
-  stroke: #1971c2;
+  stroke: #f7b955;
   stroke-width: 5;
 }
 
@@ -289,7 +336,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: calc(24px + var(--safe-top)) 24px calc(24px + var(--safe-bottom));
   z-index: 10;
 }
 
@@ -490,6 +537,10 @@ body {
 
 .last-move-label {
   opacity: 0.6;
+}
+
+.last-move.off {
+  display: none;
 }
 
 /* ---------- highlights & animation ---------- */

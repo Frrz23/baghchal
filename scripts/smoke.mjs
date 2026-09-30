@@ -108,6 +108,41 @@ try {
   if (chipsAfter !== 1) fail(`undo should leave 1 chip, got ${chipsAfter}`);
   await page.click('[data-act="resume"]');
 
+  // --- last-move toggle: hides line + board dots, persists across renders ---
+  const lmVisible = await page.$eval('.last-move', (el) => getComputedStyle(el).display !== 'none');
+  if (!lmVisible) fail('last-move line should start visible (default ON)');
+  const dotsOn = await page.$$eval('.last-dot', (els) => els.length);
+  if (dotsOn < 1) fail(`expected >=1 board last-dot with toggle ON, got ${dotsOn}`);
+  await page.click('[data-act="pause"]');
+  await page.waitForSelector('.pause-card', { timeout: 3000 });
+  await page.click('[data-act="lastmove"]');
+  const offState = await page.evaluate(() => ({
+    lm: getComputedStyle(document.querySelector('.last-move')).display,
+    dots: document.querySelectorAll('.last-dot').length,
+    active: document.querySelector('[data-act="lastmove"]').classList.contains('active'),
+    stored: localStorage.getItem('lastMove'),
+    hist: !!document.querySelector('.pause-history') || !!document.querySelector('.pause-empty'),
+  }));
+  if (offState.lm !== 'none') fail(`last-move line should be display:none when OFF, got ${offState.lm}`);
+  if (offState.dots !== 0) fail(`board last-dots should be gone when OFF, got ${offState.dots}`);
+  if (offState.active) fail('toggle chip should lose active when OFF');
+  if (offState.stored !== '0') fail(`toggle OFF not persisted, got ${offState.stored}`);
+  if (offState.hist) fail('pause-menu move list should be removed from DOM when OFF');
+  await page.click('[data-act="lastmove"]');
+  const onState = await page.evaluate(() => ({
+    lm: getComputedStyle(document.querySelector('.last-move')).display,
+    dots: document.querySelectorAll('.last-dot').length,
+    active: document.querySelector('[data-act="lastmove"]').classList.contains('active'),
+    stored: localStorage.getItem('lastMove'),
+    chips: document.querySelectorAll('.pause-history .chip').length,
+  }));
+  if (onState.lm === 'none') fail('last-move line should re-show when toggle back ON');
+  if (onState.dots < 1) fail('board last-dots should return when toggle back ON');
+  if (!onState.active) fail('toggle chip should be active when ON');
+  if (onState.stored !== '1') fail(`toggle ON not persisted, got ${onState.stored}`);
+  if (onState.chips < 1) fail(`pause-menu move list should return when ON, got ${onState.chips} chips`);
+  await page.click('[data-act="resume"]');
+
   // --- language toggle works inside a game ---
   await page.click('[data-act="lang"]');
   const turnEn = await page.$eval('.turn', (el) => el.textContent || '');
@@ -182,7 +217,7 @@ try {
   if (fresh !== 4) fail(`new game should show 4 tigers, got ${fresh}`);
 
   if (errors.length) fail('page errors occurred');
-  console.log('SMOKE OK: menu, vs-AI, placement, AI reply, pause/resume/reset, selection, move, last-move, move list, undo, lang, difficulty, win overlay');
+  console.log('SMOKE OK: menu, vs-AI, placement, AI reply, pause/resume/reset, selection, move, last-move, move list, undo, last-move toggle (line+dots+history), lang, difficulty, win overlay');
   await browser.close();
   process.exit(0);
 } catch (e) {

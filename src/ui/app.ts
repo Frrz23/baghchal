@@ -43,6 +43,7 @@ export class App {
   private playerSide: Side = 'goat';
   private difficulty: Difficulty = (localStorage.getItem('difficulty') as Difficulty) || 'medium';
   private soundOn = loadBool('sound', true);
+  private showLastMove = loadBool('lastMove', true);
   private selected: number | null = null;
   private thinking = false;
   private paused = false;
@@ -132,6 +133,12 @@ export class App {
         setSoundEnabled(this.soundOn);
         localStorage.setItem('sound', this.soundOn ? '1' : '0');
         if (this.soundOn) this.sound('tap');
+        this.render();
+        break;
+      case 'lastmove':
+        this.showLastMove = !this.showLastMove;
+        localStorage.setItem('lastMove', this.showLastMove ? '1' : '0');
+        this.sound('tap');
         this.render();
         break;
     }
@@ -325,10 +332,11 @@ export class App {
     }
   }
 
-  private controlsView(withSound = true): string {
+  private controlsView(withSound = true, withLastMove = false): string {
     const soundIcon = this.soundOn ? '🔊' : '🔇';
     return `
       <div class="controls${withSound ? '' : ' game-controls'}">
+        ${withLastMove ? `<button class="chip-btn${this.showLastMove ? ' active' : ''}" data-act="lastmove">${t('lastMove')}</button>` : ''}
         <button class="chip-btn" data-act="lang">${t('langBtn')}</button>
         ${withSound ? `<button class="chip-btn" data-act="sound" aria-label="sound">${soundIcon}</button>` : ''}
       </div>`;
@@ -380,15 +388,17 @@ export class App {
   }
 
   private lastMoveView(): string {
+    const off = this.showLastMove ? '' : ' off';
     const moves = this.engine.moves;
-    if (moves.length === 0) return '<div class="last-move empty"></div>';
+    if (moves.length === 0) return `<div class="last-move empty${off}"></div>`;
     const m = moves[moves.length - 1];
-    const cls = m.kind === 'jump' ? ' capture' : '';
     const emoji = (moves.length - 1) % 2 === 0 ? '🐐' : '🐅';
-    return `<div class="last-move${cls}" aria-label="${t('lastMove')}"><span class="last-move-label">${t('lastMove')}:</span> ${emoji} ${moveLabel(m)}</div>`;
+    const cls = m.kind === 'jump' ? ' capture' : '';
+    return `<div class="last-move${cls}${off}" aria-label="${t('lastMove')}"><span class="last-move-label">${t('lastMove')}:</span> ${emoji} ${moveLabel(m)}</div>`;
   }
 
   private moveListView(): string {
+    if (!this.showLastMove) return '';
     const moves = this.engine.moves;
     if (moves.length === 0) return `<p class="pause-empty">${t('movesLabel')}: —</p>`;
     const chips = moves.map((m, i) => this.chipFor(m, i)).join('');
@@ -408,7 +418,7 @@ export class App {
           </div>
           <p class="prompt-label">${t('diffLabel')}</p>
           <div class="chips">${this.difficultyChips()}</div>
-          ${this.controlsView()}
+          ${this.controlsView(true, true)}
         </div>
       </div>`;
   }
@@ -424,7 +434,7 @@ export class App {
       selected: this.selected,
       targets: this.targets(),
       placing,
-      last: this.lastMove(),
+      last: this.showLastMove ? this.lastMove() : null,
       fx,
     });
     const turnEmoji = st.toMove === 'goat' ? '🐐' : '🐅';
@@ -467,6 +477,7 @@ export class App {
   }
 
   private render(): void {
+    this.root.dataset.screen = this.screen;
     if (this.screen === 'menu') this.root.innerHTML = this.menuView();
     else if (this.screen === 'side') this.root.innerHTML = this.sideView();
     else this.root.innerHTML = this.gameView();

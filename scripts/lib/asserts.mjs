@@ -16,12 +16,28 @@ export async function tap(page, selector) {
 
 export async function assertCommon(page, size, screen, report) {
   const { err, warn } = report;
-  const m = await page.evaluate(() => ({
-    scrollW: document.documentElement.scrollWidth,
-    innerW: window.innerWidth,
-    smallBtns: [...document.querySelectorAll('.btn')].map((b) => b.getBoundingClientRect().height),
-    smallChips: [...document.querySelectorAll('.chip-btn')].map((b) => b.getBoundingClientRect().height),
-  }));
+  const m = await page.evaluate(() => {
+    const scrollW = document.documentElement.scrollWidth;
+    const innerW = window.innerWidth;
+    const smallBtns = [...document.querySelectorAll('.btn')].map((b) => b.getBoundingClientRect().height);
+    const smallChips = [...document.querySelectorAll('.chip-btn')].map((b) => b.getBoundingClientRect().height);
+    // vertical centering of the menu/side content (only when it fits; overflow
+    // legitimately pins to top via justify-content: safe center)
+    let menuCenter = null;
+    let menuIh = 0;
+    const menu = document.querySelector('.menu');
+    if (menu && menu.children.length) {
+      const box = menu.getBoundingClientRect();
+      const first = menu.children[0].getBoundingClientRect();
+      const last = menu.children[menu.children.length - 1].getBoundingClientRect();
+      const fits = first.top >= box.top - 1 && last.bottom <= box.bottom + 1;
+      if (fits) {
+        menuCenter = (box.top + box.bottom) / 2;
+        menuIh = window.innerHeight;
+      }
+    }
+    return { scrollW, innerW, smallBtns, smallChips, menuCenter, menuIh };
+  });
   if (m.scrollW > m.innerW + 1) {
     err(size.name, screen, `horizontal overflow: scrollWidth ${m.scrollW} > innerWidth ${m.innerW}`);
   }
@@ -31,6 +47,12 @@ export async function assertCommon(page, size, screen, report) {
   m.smallChips.forEach((h, i) => {
     if (h > 0 && h < 30) warn(size.name, screen, `chip #${i} short: ${h.toFixed(0)}px`);
   });
+  if (m.menuCenter !== null) {
+    const delta = Math.abs(m.menuCenter - m.menuIh / 2);
+    if (delta > 10) {
+      err(size.name, screen, `menu not vertically centered: off by ${delta.toFixed(0)}px (tol 10)`);
+    }
+  }
 }
 
 export async function assertGame(page, size, report) {
