@@ -84,6 +84,6 @@ Screenshots order: 01 menu · 02 side + difficulty · 03 mid-game · 04 pause + 
 - Content rating: complete questionnaire (violence None, multiplayer None, ads None, IAP None)
 - Data safety: no data collected — the app has zero network use and zero permissions
 - Monetization: Free, no ads, no in-app purchases
-- **Privacy policy URL: required by Play Console — host a one-page policy before submission** (state: no collection, no network, no third parties)
+- **Privacy policy URL: required by Play Console** — policy drafted in `store/privacy-policy.md`; host it (GitHub Pages → `https://frrz23.github.io/baghchal/privacy-policy`) and paste the URL at M5
 - Play App Signing: enroll **keeping `baghchal-release.jks` as the app-signing key** (see backup README) so direct-share APKs and Play installs stay mutually updatable
 - Contact email: fill in at M5
