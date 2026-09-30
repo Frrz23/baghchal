@@ -1,0 +1,557 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: 'Noto Sans Devanagari', system-ui, -apple-system, sans-serif;
+  background: radial-gradient(circle at 50% 0%, #2c2118 0%, #17110c 70%);
+  color: #f3e9d8;
+  display: flex;
+  justify-content: center;
+  overscroll-behavior: none;
+}
+
+#app {
+  width: 100%;
+  max-width: 520px;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  position: relative;
+}
+
+/* ---------- menu ---------- */
+
+.menu {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.menu-art {
+  font-size: 64px;
+  letter-spacing: -14px;
+  margin-bottom: 6px;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.5));
+}
+
+.menu-art span {
+  margin-left: 18px;
+}
+
+.title {
+  font-size: 56px;
+  font-weight: 700;
+  color: #f7b955;
+  text-shadow: 0 3px 12px rgba(247, 185, 85, 0.35);
+}
+
+.subtitle {
+  font-size: 17px;
+  opacity: 0.85;
+}
+
+.pieces-line {
+  font-size: 14px;
+  opacity: 0.55;
+  margin-bottom: 18px;
+}
+
+.prompt {
+  font-size: 26px;
+  margin-bottom: 12px;
+}
+
+.menu-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 340px;
+}
+
+/* ---------- buttons ---------- */
+
+.btn {
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  padding: 15px 20px;
+  border-radius: 14px;
+  border: 1px solid rgba(243, 233, 216, 0.25);
+  background: rgba(243, 233, 216, 0.08);
+  color: #f3e9d8;
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn-primary {
+  background: #f7b955;
+  border-color: #f7b955;
+  color: #2b1c08;
+}
+
+.btn-goat {
+  background: #e9f5ec;
+  border-color: #e9f5ec;
+  color: #1f4d2c;
+}
+
+.btn-tiger {
+  background: #f8a13f;
+  border-color: #f8a13f;
+  color: #42210a;
+}
+
+.btn-ghost {
+  background: transparent;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+/* ---------- game ---------- */
+
+.game {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
+  justify-content: safe center;
+}
+
+.topbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.turn {
+  font-size: 19px;
+  font-weight: 700;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: rgba(243, 233, 216, 0.1);
+  border: 1px solid rgba(243, 233, 216, 0.18);
+}
+
+.turn.goat {
+  color: #e9f5ec;
+  border-color: rgba(233, 245, 236, 0.4);
+}
+
+.turn.tiger {
+  color: #f8c98d;
+  border-color: rgba(248, 161, 63, 0.5);
+}
+
+.turn-emoji {
+  margin-right: 8px;
+}
+
+.counts {
+  display: flex;
+  gap: 16px;
+  font-size: 14px;
+  opacity: 0.75;
+}
+
+.board-wrap {
+  width: min(100%, 640px, calc(100dvh - 260px));
+  margin-inline: auto;
+}
+
+.board {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 20px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+.board-bg {
+  fill: #e7d2a8;
+}
+
+.board-line {
+  stroke: #6b4a2b;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.node {
+  fill: #6b4a2b;
+}
+
+.place-dot {
+  fill: rgba(47, 158, 68, 0.16);
+  stroke: rgba(47, 158, 68, 0.55);
+  stroke-width: 2;
+}
+
+.target {
+  fill: #2f9e44;
+  animation: pulse 1.3s ease-in-out infinite;
+}
+
+.target-capture {
+  fill: #e8590c;
+}
+
+.prey {
+  fill: none;
+  stroke: #e03131;
+  stroke-width: 5;
+  stroke-dasharray: 10 8;
+  animation: spin-dash 3s linear infinite;
+}
+
+.selected {
+  fill: none;
+  stroke: #1971c2;
+  stroke-width: 5;
+}
+
+.piece {
+  filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.35));
+  pointer-events: none;
+}
+
+.piece-tiger {
+  fill: #f8a13f;
+  stroke: #9c5410;
+  stroke-width: 3;
+}
+
+.piece-goat {
+  fill: #fdf8ec;
+  stroke: #a89878;
+  stroke-width: 3;
+}
+
+.piece-emoji {
+  font-size: 30px;
+  pointer-events: none;
+}
+
+.hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
+.hit:active {
+  fill: rgba(0, 0, 0, 0.07);
+}
+
+.hint {
+  text-align: center;
+  font-size: 15px;
+  opacity: 0.7;
+  min-height: 1.4em;
+}
+
+.game-actions {
+  display: flex;
+  justify-content: center;
+  padding-top: 6px;
+}
+
+.game-actions .btn {
+  font-size: 15px;
+  padding: 10px 26px;
+}
+
+/* ---------- overlay ---------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 7, 4, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 10;
+}
+
+.card {
+  background: #241b13;
+  border: 1px solid rgba(243, 233, 216, 0.18);
+  border-radius: 20px;
+  padding: 30px 26px;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+
+.card h2 {
+  font-size: 28px;
+  color: #f7b955;
+}
+
+.result {
+  font-size: 56px;
+  letter-spacing: -10px;
+}
+
+.card .reason {
+  font-size: 15px;
+  opacity: 0.75;
+}
+
+.card .menu-buttons {
+  margin-top: 8px;
+}
+
+/* ---------- pause overlay ---------- */
+
+.pause-card {
+  max-width: 400px;
+}
+
+.pause-card h2 {
+  font-size: 24px;
+}
+
+.pause-history {
+  flex-wrap: wrap;
+  justify-content: center;
+  min-height: 0;
+  max-height: 30vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  width: 100%;
+}
+
+.pause-empty {
+  font-size: 14px;
+  opacity: 0.5;
+}
+
+.pause-card .chips {
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 0;
+}
+
+.pause-card .prompt-label {
+  margin-top: 6px;
+  margin-bottom: -6px;
+}
+
+.pause-card .controls {
+  justify-content: center;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.95;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes spin-dash {
+  to {
+    stroke-dashoffset: -72;
+  }
+}
+
+/* ---------- controls & chips ---------- */
+
+.controls {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.game-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 5;
+}
+
+.chip-btn {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(243, 233, 216, 0.3);
+  background: rgba(243, 233, 216, 0.08);
+  color: inherit;
+  cursor: pointer;
+  transition: transform 0.08s ease;
+}
+
+.chip-btn:active {
+  transform: scale(0.95);
+}
+
+.chip-btn.active {
+  background: #f7b955;
+  border-color: #f7b955;
+  color: #2b1c08;
+}
+
+.chips {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.prompt-label {
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+/* ---------- move history ---------- */
+
+.history {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px;
+  min-height: 30px;
+  scrollbar-width: none;
+}
+
+.history::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex: 0 0 auto;
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(243, 233, 216, 0.25);
+  background: rgba(243, 233, 216, 0.07);
+  white-space: nowrap;
+}
+
+.chip.goat {
+  border-color: rgba(233, 245, 236, 0.4);
+}
+
+.chip.tiger {
+  border-color: rgba(248, 161, 63, 0.5);
+}
+
+.chip.capture {
+  border-color: #e03131;
+  color: #ffb3b3;
+}
+
+/* ---------- last move line ---------- */
+
+.last-move {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  font-size: 14px;
+  opacity: 0.75;
+  padding: 2px;
+}
+
+.last-move.capture {
+  color: #ffb3b3;
+  opacity: 0.95;
+}
+
+.last-move-label {
+  opacity: 0.6;
+}
+
+/* ---------- highlights & animation ---------- */
+
+.last-dot {
+  fill: rgba(247, 185, 85, 0.4);
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.game-actions {
+  gap: 10px;
+  align-items: center;
+}
+
+.fx-move,
+.fx-place,
+.ghost-fx {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.fx-move {
+  animation: fx-slide 0.24s ease-out both;
+}
+
+@keyframes fx-slide {
+  from {
+    transform: translate(var(--dx), var(--dy));
+  }
+  to {
+    transform: translate(0, 0);
+  }
+}
+
+.fx-place {
+  animation: fx-pop 0.26s ease-out both;
+}
+
+@keyframes fx-pop {
+  from {
+    transform: scale(0.35);
+    opacity: 0.3;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.ghost-fx {
+  animation: fx-ghost 0.5s ease-in forwards;
+}
+
+@keyframes fx-ghost {
+  from {
+    opacity: 0.95;
+  }
+  to {
+    opacity: 0;
+  }
+}

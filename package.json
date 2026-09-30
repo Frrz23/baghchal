@@ -1,0 +1,38 @@
+{
+  "name": "baghchal",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "match": "vitest run --config vitest.match.config.ts",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node scripts/smoke.mjs",
+    "responsive": "node scripts/responsive.mjs",
+    "appcheck": "node scripts/appcheck.mjs",
+    "panel": "node scripts/emu-panel.mjs",
+    "lab": "node scripts/lab.mjs",
+    "emulator": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\emulator.ps1",
+    "device": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\deploy.ps1",
+    "release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\release.ps1",
+    "gen-assets": "node scripts/gen-assets.mjs",
+    "store-shots": "node scripts/store-shots.mjs"
+  },
+  "dependencies": {
+    "@fontsource/noto-sans-devanagari": "^5.3.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "puppeteer-core": "^25.12.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6",
+    "vitest": "^3.2.7"
+  }
+}
