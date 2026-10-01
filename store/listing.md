@@ -40,6 +40,8 @@ Default language Nepali (locale `ne-NP`), English translation below.
 • पूर्ण अफलाइन — विज्ञापन, खरिद र इन्टरनेट अनुमति बिना।
 • कुनै पनि तथ्याङ्क सङ्कलन हुँदैन।
 
+आर्ट श्रेय: बाघ र बाख्राको चित्र — Noto Emoji (Google LLC), Apache 2.0।
+
 Rules quick-ref: tigers = बाघ (4, corners) · goats = बाख्रा (20, placement first) · capture = ओल्ने (jump) · block = घेर्ने.
 
 ## Full description — en
@@ -63,6 +65,8 @@ Features:
 • No data is collected. The game runs entirely on your device.
 
 Classic rules, fair play, faithful board. खेल्न लगनुहोस् — बाघचाल!
+
+Art credit: tiger & goat artwork — Noto Emoji (Google LLC), Apache 2.0.
 
 ---
 

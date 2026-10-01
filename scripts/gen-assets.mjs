@@ -1,11 +1,20 @@
 import puppeteer from 'puppeteer-core';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(dir, '..');
 mkdirSync(path.join(root, 'resources'), { recursive: true });
+
+const cleanSvg = (file) =>
+  readFileSync(path.join(root, 'src', 'assets', file), 'utf8')
+    .replace(/^<\?xml[^>]*\?>\s*/, '')
+    .replace(/<!--[\s\S]*?-->\s*/, '');
+const tigerSvg = cleanSvg('tiger.svg');
+
+const art = (size, shadow) =>
+  `<div style="width:${size}px;height:${size}px;filter:drop-shadow(${shadow})">${tigerSvg}</div>`;
 
 const browser = await puppeteer.launch({
   executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -23,6 +32,7 @@ async function shot(file, w, h, body) {
         display: flex; flex-direction: column; align-items: center; justify-content: center;
         font-family: 'Nirmala UI', sans-serif;
       }
+      body svg { display: block; width: 100%; height: 100%; }
     </style></head><body>${body}</body></html>`,
     { waitUntil: 'networkidle0' },
   );
@@ -31,26 +41,16 @@ async function shot(file, w, h, body) {
   await page.close();
 }
 
-await shot(
-  'icon.png',
-  1024,
-  1024,
-  `<div style="font-size:560px;line-height:1;filter:drop-shadow(0 18px 30px rgba(0,0,0,.55))">🐅</div>`,
-);
+await shot('icon.png', 1024, 1024, art(560, '0 18px 30px rgba(0,0,0,.55)'));
 
-await shot(
-  'icon-512.png',
-  512,
-  512,
-  `<div style="font-size:280px;line-height:1;filter:drop-shadow(0 9px 15px rgba(0,0,0,.55))">🐅</div>`,
-);
+await shot('icon-512.png', 512, 512, art(280, '0 9px 15px rgba(0,0,0,.55)'));
 
 await shot(
   'feature-graphic.png',
   1024,
   500,
   `<div style="display:flex;align-items:center;gap:56px">
-     <div style="font-size:230px;line-height:1;filter:drop-shadow(0 12px 24px rgba(0,0,0,.55))">🐅</div>
+     ${art(230, '0 12px 24px rgba(0,0,0,.55)')}
      <div style="display:flex;flex-direction:column;align-items:flex-start;gap:18px">
        <div style="font-size:104px;font-weight:700;color:#f7b955;line-height:1;text-shadow:0 6px 18px rgba(0,0,0,.6)">बाघचाल</div>
        <div style="font-size:28px;color:#e8dcc8;text-shadow:0 3px 10px rgba(0,0,0,.6)">Tiger &amp; Goats — Nepali strategy board game</div>
@@ -62,7 +62,7 @@ await shot(
   'splash.png',
   2732,
   2732,
-  `<div style="font-size:700px;line-height:1;filter:drop-shadow(0 24px 40px rgba(0,0,0,.5))">🐅</div>
+  `${art(700, '0 24px 40px rgba(0,0,0,.5)')}
    <div style="font-size:280px;font-weight:700;color:#f7b955;margin-top:90px;text-shadow:0 8px 24px rgba(0,0,0,.6)">बाघचाल</div>`,
 );
 

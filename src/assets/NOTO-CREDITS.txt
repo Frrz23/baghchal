@@ -1,0 +1,14 @@
+Tiger and goat artwork (tiger.svg, goat.svg)
+============================================
+
+Source: Noto Emoji — https://github.com/googlefonts/noto-emoji
+Files:  2D/svg/emoji_u1f405.svg (tiger), 2D/svg/emoji_u1f410.svg (goat)
+
+License: Apache License, Version 2.0 — per the repository README:
+  "Tools and most image resources are under the Apache license,
+   version 2.0" (see LICENSE in that repository).
+
+Attribution (courtesy, not required by Apache 2.0):
+  "Tiger & goat artwork: Noto Emoji (Google LLC), Apache 2.0"
+
+Do not modify the files except for sizing/viewBox if ever needed.

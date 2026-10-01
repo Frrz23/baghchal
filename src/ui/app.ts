@@ -14,6 +14,10 @@ import { colOf, rowOf } from '../game/board';
 import { renderBoard, Target } from './boardView';
 import { lang, num, setLang, t } from './i18n';
 import { TUT_SCENARIOS, TutSide } from './tutScript';
+import tigerArt from '../assets/tiger.svg';
+import goatArt from '../assets/goat.svg';
+
+const artImg = (src: string, cls: string): string => `<img class="${cls}" src="${src}" alt="">`;
 
 type Screen = 'menu' | 'side' | 'game' | 'tut';
 type Mode = 'ai' | 'local';
@@ -577,7 +581,7 @@ export class App {
     return `
       ${this.controlsView()}
       <div class="menu">
-        <div class="menu-art">🐅<span>🐐</span></div>
+        <div class="menu-art"><img src="${tigerArt}" alt=""><span><img src="${goatArt}" alt=""></span></div>
         <h1 class="title">${t('title')}</h1>
         <p class="subtitle">${t('subtitle')}</p>
         <p class="pieces-line">${t('piecesLine')}</p>
@@ -669,12 +673,16 @@ export class App {
       last: this.showLastMove ? this.lastMove() : null,
       fx,
     });
-    const turnEmoji = st.toMove === 'goat' ? '🐐' : '🐅';
+    const turnArt = st.toMove === 'goat' ? goatArt : tigerArt;
     const canUndo = !outcome && !this.thinking && this.engine.historyLength > 0;
     const overlay = outcome
       ? `<div class="overlay">
            <div class="card">
-             <div class="result">${outcome.kind === 'win' ? (outcome.winner === 'goat' ? '🐐' : '🐅') : '⚖️'}</div>
+             <div class="result">${
+               outcome.kind === 'win'
+                 ? artImg(outcome.winner === 'goat' ? goatArt : tigerArt, 'result-art')
+                 : '⚖️'
+             }</div>
              <h2>${this.resultText(outcome)}</h2>
              <p class="reason">${this.reasonText(outcome)}</p>
              <div class="menu-buttons">
@@ -690,7 +698,7 @@ export class App {
       <div class="game">
         ${this.controlsView(false)}
         <header class="topbar">
-          <div class="turn ${st.toMove}"><span class="turn-emoji">${turnEmoji}</span>${this.turnText()}</div>
+          <div class="turn ${st.toMove}"><span class="turn-emoji">${artImg(turnArt, 'turn-art')}</span>${this.turnText()}</div>
           <div class="counts">
             <span>🐐 ${t('inHand')} ${num(st.goatsInHand)}</span>
             <span>✕ ${t('captured')} ${num(st.goatsCaptured)}</span>

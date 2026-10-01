@@ -1,8 +1,14 @@
 import { NODE_COUNT, colOf, connected, rowOf } from '../game/board';
 import { GameState, Move } from '../game/rules';
+import tigerArt from '../assets/tiger.svg';
+import goatArt from '../assets/goat.svg';
 
 const PAD = 50;
 const STEP = 100;
+
+const artFor = (p: 'T' | 'G'): string => (p === 'T' ? tigerArt : goatArt);
+const artMarkup = (p: 'T' | 'G'): string =>
+  `<image class="piece-art" href="${artFor(p)}" x="-22" y="-22" width="44" height="44"/>`;
 
 const nodeX = (n: number): number => PAD + colOf(n) * STEP;
 const nodeY = (n: number): number => PAD + rowOf(n) * STEP;
@@ -28,12 +34,11 @@ export interface BoardOptions {
 }
 
 function pieceMarkup(n: number, p: 'T' | 'G', fx: string, style: string): string {
-  const emoji = p === 'T' ? '🐅' : '🐐';
   return (
     `<g class="piece" transform="translate(${nodeX(n)} ${nodeY(n)})">` +
     `<g class="${fx}"${style}>` +
     `<circle class="${p === 'T' ? 'piece-tiger' : 'piece-goat'}" r="30"/>` +
-    `<text class="piece-emoji" text-anchor="middle" dominant-baseline="central">${emoji}</text>` +
+    artMarkup(p) +
     '</g></g>'
   );
 }
@@ -119,7 +124,7 @@ export function renderBoard(s: GameState, opts: BoardOptions): string {
       `<g class="piece" transform="translate(${nodeX(fx.over)} ${nodeY(fx.over)})">` +
         '<g class="ghost-fx">' +
         '<circle class="piece-goat" r="30"/>' +
-        '<text class="piece-emoji" text-anchor="middle" dominant-baseline="central">🐐</text>' +
+        artMarkup('G') +
         '</g></g>',
     );
   }
