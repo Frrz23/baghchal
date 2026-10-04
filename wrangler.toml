@@ -1,0 +1,15 @@
+# Cloudflare Worker: authoritative Baghchal room server (M8').
+# Free plan: SQLite-backed Durable Objects, 100k req/day, WS messages count
+# as requests. Deploy: `npm run deploy:worker` (needs `npx wrangler login`).
+# After the first deploy, put the printed URL into src/online/config.ts.
+name = "baghchal-online"
+main = "src/online/server.ts"
+compatibility_date = "2026-10-01"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]

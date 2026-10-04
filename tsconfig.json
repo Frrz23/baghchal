@@ -16,5 +16,6 @@
     "noFallthroughCasesInSwitch": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "tests", "vite.config.ts", "vitest.match.config.ts", "scripts/ai-match.scenario.ts"]
+  "include": ["src", "tests", "vite.config.ts", "vitest.match.config.ts", "scripts/ai-match.scenario.ts"],
+  "exclude": ["src/online/server.ts"]
 }

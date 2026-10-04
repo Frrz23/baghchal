@@ -65,9 +65,10 @@ body {
   text-align: center;
 }
 
-/* custom game screen: content-heavy, scrolls when it does not fit */
+/* custom/online/stats screens: content-heavy, scroll when it does not fit */
 #app[data-screen='custom'],
-#app[data-screen='stats'] {
+#app[data-screen='stats'],
+#app[data-screen='online'] {
   overflow-y: auto;
 }
 
@@ -225,6 +226,29 @@ body {
   padding-top: 34px;
 }
 
+/* online room screen (create → share code / join → code input) */
+.online-menu {
+  justify-content: safe center;
+  gap: 10px;
+  padding-top: 34px;
+  width: 100%;
+}
+
+.online-menu .menu-buttons {
+  max-width: 300px;
+}
+
+.online-menu .code-row {
+  width: 100%;
+  max-width: 300px;
+}
+
+.code-hint {
+  font-size: 13px;
+  opacity: 0.75;
+  margin: 0;
+}
+
 .stats-h {
   font-size: 24px;
   margin: 0;
@@ -327,7 +351,8 @@ body {
 #app[data-screen='menu'] > .controls,
 #app[data-screen='side'] > .controls,
 #app[data-screen='custom'] > .controls,
-#app[data-screen='stats'] > .controls {
+#app[data-screen='stats'] > .controls,
+#app[data-screen='online'] > .controls {
   position: absolute;
   top: calc(16px + var(--safe-top));
   right: 16px;
@@ -401,10 +426,10 @@ body {
   max-width: 340px;
 }
 
-/* short viewports (landscape phones ~411px): compact the menu so all three
-   buttons fit - .menu is flex:1 with min-height:auto, so overflowing content
-   stretches the box past the viewport and breaks vertical centering */
-@media (max-height: 520px) {
+/* short viewports (landscape ~411px, small phones ~640px): compact the menu so
+   all six buttons fit - .menu is flex:1 with min-height:auto, so overflowing
+   content stretches the box past the viewport and breaks vertical centering */
+@media (max-height: 700px) {
   .menu {
     gap: 6px;
   }
@@ -423,16 +448,36 @@ body {
   .pieces-line {
     margin-bottom: 0;
   }
-  /* five menu buttons now: tighten so all fit short viewports */
+  /* six menu buttons now: tighten so all fit short viewports */
   .menu-buttons {
-    gap: 8px;
+    gap: 6px;
   }
   .menu-buttons .btn {
     padding: 10px 16px;
     font-size: 15px;
   }
+}
+
+/* very short viewports (landscape phones ~411px): six buttons no longer fit
+   the compact layout above - drop decorative lines and shrink harder */
+@media (max-height: 460px) {
+  .menu {
+    gap: 4px;
+  }
+  .menu-art img {
+    height: 26px;
+  }
+  .title {
+    font-size: 28px;
+  }
+  .subtitle {
+    font-size: 12px;
+  }
+  .pieces-line {
+    display: none;
+  }
   .menu-buttons {
-    gap: 8px;
+    gap: 5px;
   }
 }
 

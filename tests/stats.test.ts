@@ -119,9 +119,39 @@ describe('achievements', () => {
     expect(r.unlocked).toContain('wins10');
   });
 
-  it('exposes 12 achievements with unique ids', () => {
-    expect(ACHIEVEMENTS).toHaveLength(12);
-    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(12);
+  it('exposes 13 achievements with unique ids', () => {
+    expect(ACHIEVEMENTS).toHaveLength(13);
+    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(13);
+  });
+});
+
+describe('online mode', () => {
+  it('counts online games and credits your seat’s win', () => {
+    let r = play(emptyStore(), { mode: 'online', difficulty: null, playerSide: 'tiger', winner: 'tiger', reason: 'captures' });
+    expect(r.store.stats.onlineGames).toBe(1);
+    expect(r.store.stats.winsOnline).toBe(1);
+    expect(r.store.stats.aiGames).toBe(0);
+    expect(r.store.stats.winsTiger).toBe(1);
+    expect(r.store.stats.vsHardWins).toBe(0); // difficulty is null online
+    expect(r.unlocked).toContain('onlineWin');
+    // loss as goat: counted as a game, not a win
+    r = play(r.store, { mode: 'online', difficulty: null, playerSide: 'goat', winner: 'tiger', reason: 'captures' });
+    expect(r.store.stats.onlineGames).toBe(2);
+    expect(r.store.stats.winsOnline).toBe(1);
+    expect(r.unlocked).toEqual([]); // achievements only unlock once
+  });
+
+  it('counts online draws', () => {
+    const r = play(emptyStore(), { mode: 'online', difficulty: null, playerSide: 'goat', winner: null, reason: 'repetition' });
+    expect(r.store.stats.onlineGames).toBe(1);
+    expect(r.store.stats.draws).toBe(1);
+    expect(r.store.stats.winsOnline).toBe(0);
+  });
+
+  it('keeps online wins out of the local-win achievement', () => {
+    const r = play(emptyStore(), { mode: 'online', difficulty: null, playerSide: 'goat', winner: 'goat' });
+    expect(r.unlocked).not.toContain('localWin');
+    expect(r.unlocked).toContain('onlineWin');
   });
 });
 

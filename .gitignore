@@ -4,3 +4,4 @@ release/
 *.log
 .smoke/
 android/keystore.properties
+.wrangler/

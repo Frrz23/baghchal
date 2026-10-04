@@ -12,6 +12,8 @@ export interface StatsData {
   aiGames: number;
   localGames: number;
   winsLocal: number;
+  onlineGames: number;
+  winsOnline: number;
   vsHardWins: number;
   winCaptures: number;
   winBlocked: number;
@@ -23,7 +25,7 @@ export interface StatsData {
 }
 
 export interface GameEvent {
-  mode: 'ai' | 'local';
+  mode: 'ai' | 'local' | 'online';
   difficulty: StatsDifficulty | null;
   /** Human's side in vs-AI games; null for local two-player. */
   playerSide: Side | null;
@@ -63,6 +65,7 @@ export const ACHIEVEMENTS: AchDef[] = [
   { id: 'suddenWin', emoji: '⚡', nameKey: 'achSuddenWin', descKey: 'achSuddenWinD', when: (s) => s.winSudden >= 1 },
   { id: 'perfect', emoji: '🌟', nameKey: 'achPerfect', descKey: 'achPerfectD', when: (s) => s.cleanGoatWins >= 1 },
   { id: 'localWin', emoji: '🤝', nameKey: 'achLocalWin', descKey: 'achLocalWinD', when: (s) => s.winsLocal >= 1 },
+  { id: 'onlineWin', emoji: '🌐', nameKey: 'achOnlineWin', descKey: 'achOnlineWinD', when: (s) => s.winsOnline >= 1 },
 ];
 
 export function emptyStats(): StatsData {
@@ -74,6 +77,8 @@ export function emptyStats(): StatsData {
     aiGames: 0,
     localGames: 0,
     winsLocal: 0,
+    onlineGames: 0,
+    winsOnline: 0,
     vsHardWins: 0,
     winCaptures: 0,
     winBlocked: 0,
@@ -93,12 +98,14 @@ export function emptyStore(): StatsStore {
 export function recordGame(store: StatsStore, ev: GameEvent): { store: StatsStore; unlocked: string[] } {
   const s: StatsData = { ...store.stats, bestWinPlies: store.stats.bestWinPlies };
   const isLocal = ev.mode === 'local';
+  const isOnline = ev.mode === 'online';
   const playerWon = ev.winner !== null && (isLocal || ev.winner === ev.playerSide);
   const wonAsGoat = playerWon && (isLocal ? ev.winner === 'goat' : ev.playerSide === 'goat');
   const wonAsTiger = playerWon && (isLocal ? ev.winner === 'tiger' : ev.playerSide === 'tiger');
 
   s.games++;
   if (isLocal) s.localGames++;
+  else if (isOnline) s.onlineGames++;
   else s.aiGames++;
   if (ev.captures > 0) s.goatsCaptured += ev.captures;
   if (wonAsGoat) {
@@ -108,7 +115,8 @@ export function recordGame(store: StatsStore, ev: GameEvent): { store: StatsStor
     s.winsTiger++;
   }
   if (playerWon && isLocal) s.winsLocal++;
-  if (playerWon && !isLocal && ev.difficulty === 'hard') s.vsHardWins++;
+  if (playerWon && isOnline) s.winsOnline++;
+  if (playerWon && !isLocal && !isOnline && ev.difficulty === 'hard') s.vsHardWins++;
   if (ev.winner === null) s.draws++;
 
   if (playerWon) {

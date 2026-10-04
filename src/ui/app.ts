@@ -33,13 +33,15 @@ import {
 import { renderBoard, Target } from './boardView';
 import { lang, num, setLang, t } from './i18n';
 import { TUT_SCENARIOS, TutSide } from './tutScript';
+import { OnlineConn } from '../online/client';
+import { ServerMsg, validCode } from '../online/protocol';
 import tigerArt from '../assets/tiger.svg';
 import goatArt from '../assets/goat.svg';
 
 const artImg = (src: string, cls: string): string => `<img class="${cls}" src="${src}" alt="">`;
 
-type Screen = 'menu' | 'side' | 'game' | 'tut' | 'custom' | 'stats';
-type Mode = 'ai' | 'local';
+type Screen = 'menu' | 'side' | 'game' | 'tut' | 'custom' | 'stats' | 'online';
+type Mode = 'ai' | 'local' | 'online';
 
 interface AiResponse {
   id: number;
@@ -104,6 +106,17 @@ export class App {
   private tutShake = false;
   private tutBusy = false;
   private tutFx: Move | null = null;
+  /* online play (M8): one WS connection, seat/token kept for reclaim */
+  private conn: OnlineConn | null = null;
+  private onlinePhase: 'idle' | 'connecting' | 'joining' | 'waiting' | 'playing' = 'idle';
+  private onlineSeat: Side | null = null;
+  private onlineCode: string | null = null;
+  private onlineOpp = false;
+  private onlineErr: string | null = null;
+  private onlineCopied = false;
+  private joinCode = '';
+  private opponentGone = false;
+  private linkLost = false;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -237,6 +250,61 @@ export class App {
         this.sound('tap');
         this.render();
         break;
+      case 'online':
+        this.resetOnline();
+        this.screen = 'online';
+        this.sound('tap');
+        this.render();
+        break;
+      case 'online-create':
+        this.onlineErr = null;
+        this.onlineCopied = false;
+        this.onlinePhase = 'connecting';
+        this.sound('tap');
+        this.render();
+        this.startConn('create=1');
+        break;
+      case 'online-join': {
+        const input = this.root.querySelector<HTMLInputElement>('#joinIn');
+        const raw = (input ? input.value : '').trim().toUpperCase();
+        this.joinCode = raw;
+        if (!validCode(raw)) {
+          this.onlineErr = 'onErrCode';
+          this.render();
+          break;
+        }
+        this.onlineErr = null;
+        this.onlineCopied = false;
+        this.onlinePhase = 'joining';
+        this.sound('tap');
+        this.render();
+        this.startConn(`code=${raw}`);
+        break;
+      }
+      case 'online-copy': {
+        if (this.onlineCode) {
+          try {
+            navigator.clipboard?.writeText(this.onlineCode).catch(() => {});
+          } catch {
+            /* clipboard unavailable: code stays selectable in the input */
+          }
+        }
+        this.onlineCopied = true;
+        this.sound('tap');
+        this.render();
+        window.setTimeout(() => {
+          if (!this.onlineCopied) return;
+          this.onlineCopied = false;
+          if (this.screen === 'online') this.render();
+        }, 1500);
+        break;
+      }
+      case 'online-cancel':
+        this.sound('tap');
+        this.closeConn();
+        this.resetOnline();
+        this.render();
+        break;
       case 'menu':
         this.sound('tap');
         this.goMenu();
@@ -255,6 +323,7 @@ export class App {
         this.maybeAi();
         break;
       case 'new':
+        if (this.mode === 'online') break;
         this.sound('tap');
         this.newGame(this.mode, this.playerSide, this.rules);
         break;
@@ -332,6 +401,8 @@ export class App {
 
   private goMenu(): void {
     this.exitTut();
+    this.closeConn();
+    this.resetOnline();
     this.gameId++;
     this.screen = 'menu';
     this.thinking = false;
@@ -339,6 +410,132 @@ export class App {
     this.selected = null;
     this.pendingFx = null;
     this.render();
+  }
+
+  /* ---------- online play (M8) ---------- */
+
+  private startConn(query: string): void {
+    this.closeConn();
+    this.conn = new OnlineConn({
+      onMsg: (m) => this.handleMsg(m),
+      onClose: () => this.handleClose(),
+    });
+    this.conn.connect(query);
+  }
+
+  private closeConn(): void {
+    if (this.conn) {
+      this.conn.close();
+      this.conn = null;
+    }
+  }
+
+  private resetOnline(): void {
+    this.onlinePhase = 'idle';
+    this.onlineSeat = null;
+    this.onlineCode = null;
+    this.onlineOpp = false;
+    this.onlineErr = null;
+    this.opponentGone = false;
+    this.linkLost = false;
+  }
+
+  /** Rebuilds engine state by replaying the server's authoritative move list. */
+  private syncGame(moves: Move[]): void {
+    const eng = new GameEngine(undefined, CLASSIC_RULESET);
+    for (const m of moves) eng.play(m);
+    this.engine = eng;
+    this.selected = null;
+  }
+
+  private enterOnlineGame(): void {
+    if (!this.onlineSeat) return;
+    this.mode = 'online';
+    this.playerSide = this.onlineSeat;
+    this.rules = CLASSIC_RULESET;
+    this.selected = null;
+    this.thinking = false;
+    this.paused = false;
+    this.pendingFx = null;
+    this.gameId++;
+    this.unlockedNow = [];
+    this.opponentGone = false;
+    this.linkLost = false;
+    this.onlinePhase = 'playing';
+    this.screen = 'game';
+    this.render();
+  }
+
+  private handleMsg(m: ServerMsg): void {
+    switch (m.t) {
+      case 'welcome':
+        this.onlineSeat = m.seat;
+        this.onlineCode = m.code;
+        if (m.seat === 'goat') this.onlinePhase = 'waiting';
+        if (this.screen === 'online') this.render();
+        break;
+      case 'state': {
+        const prevLen = this.engine.moves.length;
+        const inGame = this.screen === 'game';
+        this.syncGame(m.moves);
+        if (inGame) {
+          this.thinking = false;
+          if (m.moves.length > prevLen) {
+            this.soundForMove(m.moves[m.moves.length - 1]);
+            this.soundIfOver();
+          }
+          this.render();
+        } else if (this.onlineOpp && this.onlineSeat) {
+          this.enterOnlineGame();
+        }
+        break;
+      }
+      case 'opponent':
+        this.onlineOpp = m.connected;
+        this.opponentGone = !m.connected;
+        if (m.connected && this.screen === 'online' && this.onlineSeat) {
+          this.enterOnlineGame();
+        } else if (this.screen === 'game') {
+          if (!m.connected) this.thinking = false;
+          this.render();
+        }
+        break;
+      case 'error': {
+        const key =
+          m.err === 'ROOM_FULL'
+            ? 'onErrFull'
+            : m.err === 'BAD_CODE'
+              ? 'onErrCode'
+              : 'onErrConn';
+        if (this.screen === 'online') {
+          this.onlineErr = key;
+          this.onlinePhase = 'idle';
+          this.closeConn();
+          this.render();
+        } else {
+          console.warn('online error', m.err);
+        }
+        break;
+      }
+      case 'bye':
+        this.closeConn();
+        this.goMenu();
+        break;
+    }
+  }
+
+  private handleClose(): void {
+    if (this.screen === 'game') {
+      this.linkLost = true;
+      this.thinking = false;
+      this.render();
+      return;
+    }
+    if (this.screen === 'online' && this.onlinePhase !== 'idle') {
+      this.onlineErr = this.onlinePhase === 'joining' ? 'onErrCode' : 'onErrConn';
+      this.onlinePhase = 'idle';
+      this.render();
+    }
   }
 
   /** Updates the custom-game draft, keeping the share-code input in sync. */
@@ -366,6 +563,7 @@ export class App {
   }
 
   private doUndo(): void {
+    if (this.mode === 'online') return;
     if (this.thinking || this.engine.historyLength === 0) return;
     this.engine.undo();
     if (this.mode === 'ai') {
@@ -385,6 +583,7 @@ export class App {
 
   private onNode(n: number): void {
     if (this.screen !== 'game' || this.paused || this.engine.outcome || this.thinking) return;
+    if (this.mode === 'online' && (this.opponentGone || this.linkLost)) return;
     if (!this.humanTurn()) return;
     const st = this.engine.current;
     const piece = st.board[n];
@@ -421,6 +620,13 @@ export class App {
   }
 
   private play(move: Move): void {
+    if (this.mode === 'online') {
+      this.selected = null;
+      this.thinking = true;
+      this.render();
+      this.conn?.send({ t: 'move', move });
+      return;
+    }
     this.engine.play(move);
     this.selected = null;
     this.pendingFx = move;
@@ -451,7 +657,7 @@ export class App {
     const ev: GameEvent = {
       mode: this.mode,
       difficulty: this.mode === 'ai' ? this.difficulty : null,
-      playerSide: this.mode === 'ai' ? this.playerSide : null,
+      playerSide: this.mode === 'local' ? null : this.playerSide,
       winner: o.kind === 'win' ? o.winner : null,
       reason: o.reason,
       plies: this.engine.historyLength,
@@ -521,7 +727,7 @@ export class App {
   }
 
   private hintText(): string {
-    if (this.thinking) return t('thinking');
+    if (this.thinking) return t(this.mode === 'online' ? 'waitRemote' : 'thinking');
     const st = this.engine.current;
     if (st.toMove === 'goat' && st.goatsInHand > 0) return t('hintPlace');
     if (this.selected === null) return t('hintSelect');
@@ -529,7 +735,7 @@ export class App {
   }
 
   private turnText(): string {
-    if (this.thinking) return t('thinking');
+    if (this.thinking) return t(this.mode === 'online' ? 'waitRemote' : 'thinking');
     return this.engine.current.toMove === 'goat' ? t('turnGoat') : t('turnTiger');
   }
 
@@ -744,6 +950,7 @@ export class App {
       row(t('stDraws'), num(s.draws)),
       row(t('stAi'), num(s.aiGames)),
       row(t('stLocal'), num(s.localGames)),
+      row(t('stOnline'), num(s.onlineGames)),
       row(t('stCaps'), num(s.goatsCaptured)),
       row(t('stBest'), s.bestWinPlies === null ? '—' : num(s.bestWinPlies)),
     ].join('');
@@ -773,6 +980,53 @@ export class App {
       </div>`;
   }
 
+  private onlineView(): string {
+    const err = this.onlineErr ? `<p class="code-err">${t(this.onlineErr)}</p>` : '';
+    const busy = this.onlinePhase === 'connecting' || this.onlinePhase === 'joining';
+    let body: string;
+    if (busy) {
+      body = `
+        <p class="prompt">${t('onConnecting')}</p>
+        <div class="menu-buttons">
+          <button class="btn btn-ghost" data-act="online-cancel">${t('back')}</button>
+        </div>`;
+    } else if (this.onlinePhase === 'waiting') {
+      const code = this.onlineCode ?? '';
+      body = `
+        <p class="prompt-label">${t('onWaiting')}</p>
+        <div class="code-row">
+          <input class="code-input selectable" id="roomCode" value="${code}" readonly spellcheck="false" aria-label="${t('onCode')}">
+          <button class="chip-btn${this.onlineCopied ? ' active' : ''}" data-act="online-copy">${this.onlineCopied ? t('codeCopied') : t('codeCopy')}</button>
+        </div>
+        <p class="code-hint">${t('onShare')}</p>
+        ${err}
+        <div class="menu-buttons">
+          <button class="btn btn-ghost" data-act="online-cancel">${t('back')}</button>
+        </div>`;
+    } else {
+      const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+      body = `
+        <div class="menu-buttons">
+          <button class="btn btn-primary" data-act="online-create">${t('onCreate')}</button>
+        </div>
+        <p class="prompt-label">${t('onCode')}</p>
+        <div class="code-row">
+          <input id="joinIn" class="code-input" value="${esc(this.joinCode)}" maxlength="4" placeholder="${t('onJoinPh')}" autocapitalize="characters" spellcheck="false" autocomplete="off" aria-label="${t('onCode')}">
+          <button class="chip-btn" data-act="online-join">${t('onJoin')}</button>
+        </div>
+        ${err}
+        <div class="menu-buttons">
+          <button class="btn btn-ghost" data-act="menu">${t('back')}</button>
+        </div>`;
+    }
+    return `
+      ${this.controlsView()}
+      <div class="menu online-menu">
+        <p class="prompt">${t('onlineTitle')}</p>
+        ${body}
+      </div>`;
+  }
+
   private menuView(): string {
     return `
       ${this.controlsView()}
@@ -785,6 +1039,7 @@ export class App {
           <button class="btn btn-primary" data-act="pick-ai">${t('modeAI')}</button>
           <button class="btn" data-act="local">${t('modeLocal')}</button>
           <button class="btn" data-act="custom">${t('customOpen')}</button>
+          <button class="btn" data-act="online">${t('onlineOpen')}</button>
           <button class="btn" data-act="stats">${t('statsOpen')}</button>
           <button class="btn btn-ghost" data-act="tut">${t('tutOpen')}</button>
         </div>
@@ -916,6 +1171,7 @@ export class App {
   }
 
   private pauseOverlay(): string {
+    const online = this.mode === 'online';
     return `
       <div class="overlay">
         <div class="card pause-card">
@@ -923,11 +1179,11 @@ export class App {
           ${this.moveListView()}
           <div class="menu-buttons">
             <button class="btn btn-primary" data-act="resume">${t('resume')}</button>
-            <button class="btn" data-act="new">${t('reset')}</button>
-            <button class="btn btn-ghost" data-act="menu">${t('menu')}</button>
+            ${online ? '' : `<button class="btn" data-act="new">${t('reset')}</button>`}
+            <button class="btn btn-ghost" data-act="menu">${online ? t('onLeave') : t('menu')}</button>
           </div>
-          <p class="prompt-label">${t('diffLabel')}</p>
-          <div class="chips">${this.difficultyChips()}</div>
+          ${online ? '' : `<p class="prompt-label">${t('diffLabel')}</p>
+          <div class="chips">${this.difficultyChips()}</div>`}
           ${this.controlsView(true, true)}
         </div>
       </div>`;
@@ -952,7 +1208,8 @@ export class App {
     const vp = presetFor(this.rules);
     const variantLabel = vp ? (vp.id === 'classic' ? '' : t(vp.labelKey)) : t('variantCustom');
     const variant = variantLabel ? `<div class="variant-chip">${variantLabel}</div>` : '';
-    const canUndo = !outcome && !this.thinking && this.engine.historyLength > 0;
+    const canUndo = !outcome && !this.thinking && this.engine.historyLength > 0 && this.mode !== 'online';
+    const disconnected = !outcome && this.mode === 'online' && (this.opponentGone || this.linkLost);
     const overlay = outcome
       ? `<div class="overlay">
            <div class="card">
@@ -970,14 +1227,24 @@ export class App {
                 })
                 .join('')}
               <div class="menu-buttons">
-               <button class="btn btn-primary" data-act="new">${t('newGame')}</button>
-               <button class="btn btn-ghost" data-act="menu">${t('menu')}</button>
+               ${this.mode === 'online' ? '' : `<button class="btn btn-primary" data-act="new">${t('newGame')}</button>`}
+               <button class="btn btn-ghost" data-act="menu">${this.mode === 'online' ? t('onLeave') : t('menu')}</button>
              </div>
            </div>
          </div>`
-      : this.paused
-        ? this.pauseOverlay()
-        : '';
+      : disconnected
+        ? `<div class="overlay">
+            <div class="card">
+              <h2>📡 ${t(this.linkLost ? 'onErrConn' : 'onLeft')}</h2>
+              <p class="reason">${t('onLeftD')}</p>
+              <div class="menu-buttons">
+                <button class="btn btn-ghost" data-act="menu">${t('menu')}</button>
+              </div>
+            </div>
+          </div>`
+        : this.paused
+          ? this.pauseOverlay()
+          : '';
     return `
       <div class="game">
         ${this.controlsView(false)}
@@ -1124,6 +1391,7 @@ export class App {
     else if (this.screen === 'side') html = this.sideView();
     else if (this.screen === 'custom') html = this.customView();
     else if (this.screen === 'stats') html = this.statsView();
+    else if (this.screen === 'online') html = this.onlineView();
     else if (this.screen === 'tut') html = this.tutView();
     else html = this.gameView();
     if (this.tutorial && this.screen === 'menu') html += this.tutorialView();
