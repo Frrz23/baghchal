@@ -398,8 +398,21 @@ try {
   const fresh = await page.$$eval('.piece', (els) => els.length);
   if (fresh !== 4) fail(`new game should show 4 tigers, got ${fresh}`);
 
+  // --- stats: the finished local game was recorded and the screen renders ---
+  await page.click('[data-act="pause"]');
+  await page.waitForSelector('.pause-card [data-act="menu"]', { timeout: 3000 });
+  await page.click('.pause-card [data-act="menu"]');
+  await page.waitForSelector('[data-act="stats"]', { timeout: 3000 });
+  await page.click('[data-act="stats"]');
+  await page.waitForSelector('#app[data-screen="stats"]', { timeout: 3000 });
+  const gamesVal = (await page.$eval('.stat-row b', (el) => el.textContent || '')).trim();
+  if (!['1', '१'].includes(gamesVal)) fail(`stats should show >=1 recorded game, got "${gamesVal}"`);
+  const unlockedAch = await page.$$eval('.ach:not(.locked)', (els) => els.length);
+  if (unlockedAch < 3) fail(`expected >=3 unlocked achievements after a win, got ${unlockedAch}`);
+  await page.screenshot({ path: '.smoke/stats.png' });
+
   if (errors.length) fail('page errors occurred');
-  console.log('SMOKE OK: first-run tutorial (auto-open/close/persist/reopen), learn screen (choose/goat track/tap-to-fill fast-forward/wrong-tap shake/centered finish/other-side teaching/tiger track/start-playing setup/exit), menu, vs-AI, placement, AI reply, pause/resume/reset, selection, move, last-move, move list, undo, last-move toggle (line+dots+history), lang, difficulty, win overlay');
+  console.log('SMOKE OK: first-run tutorial (auto-open/close/persist/reopen), learn screen (choose/goat track/tap-to-fill fast-forward/wrong-tap shake/centered finish/other-side teaching/tiger track/start-playing setup/exit), menu, vs-AI, placement, AI reply, pause/resume/reset, selection, move, last-move, move list, undo, last-move toggle (line+dots+history), lang, difficulty, win overlay, stats recorded + achievements screen');
   await browser.close();
   process.exit(0);
 } catch (e) {

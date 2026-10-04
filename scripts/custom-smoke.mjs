@@ -39,11 +39,23 @@ try {
   await page.click('[data-act="tut-close"]');
   await page.waitForSelector('[data-act="pick-ai"]', { timeout: 5000 });
 
-  // --- menu: four entries ---
+  // --- menu: five entries ---
   const acts = await page.$$eval('.menu-buttons .btn', (els) => els.map((e) => e.dataset.act));
-  if (JSON.stringify(acts) !== JSON.stringify(['pick-ai', 'local', 'custom', 'tut'])) {
-    fail(`menu acts should be [pick-ai, local, custom, tut], got ${JSON.stringify(acts)}`);
+  if (JSON.stringify(acts) !== JSON.stringify(['pick-ai', 'local', 'custom', 'stats', 'tut'])) {
+    fail(`menu acts should be [pick-ai, local, custom, stats, tut], got ${JSON.stringify(acts)}`);
   }
+
+  // --- stats screen: fresh profile shows 12 locked achievements ---
+  await page.click('[data-act="stats"]');
+  await page.waitForSelector('#app[data-screen="stats"]', { timeout: 3000 });
+  const achCards = await page.$$eval('.ach', (els) => els.length);
+  if (achCards !== 12) fail(`expected 12 achievement cards, got ${achCards}`);
+  const achLocked = await page.$$eval('.ach.locked', (els) => els.length);
+  if (achLocked !== 12) fail(`fresh profile should have 12 locked achievements, got ${achLocked}`);
+  const statRows = await page.$$eval('.stat-row', (els) => els.length);
+  if (statRows !== 12) fail(`expected 12 stat rows (8 totals + 4 methods), got ${statRows}`);
+  await page.click('.stats-menu [data-act="menu"]');
+  await page.waitForSelector('#app[data-screen="menu"]', { timeout: 3000 });
 
   // --- custom screen structure ---
   await page.click('[data-act="custom"]');

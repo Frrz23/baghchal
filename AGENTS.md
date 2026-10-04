@@ -10,7 +10,7 @@ Web Worker) + local two-player, 3 difficulties, sounds/animations, undo/history.
 |---|---|
 | Dev server | `npm run dev` (http://localhost:5173) |
 | Typecheck | `npm run typecheck` |
-| Unit tests (58) | `npm test` |
+| Unit tests (71) | `npm test` |
 | UI smoke (needs dev server) | `npm run smoke` |
 | Custom-game screen smoke | `npm run custom-smoke` (VW/VH env overrides viewport) |
 | Responsive matrix (needs dev server) | `npm run responsive` |

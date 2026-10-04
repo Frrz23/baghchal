@@ -22,6 +22,14 @@ import {
   sanitizeRules,
   sameRules,
 } from '../game/presets';
+import {
+  ACHIEVEMENTS,
+  GameEvent,
+  StatsStore,
+  loadStore,
+  recordGame,
+  saveStore,
+} from '../game/stats';
 import { renderBoard, Target } from './boardView';
 import { lang, num, setLang, t } from './i18n';
 import { TUT_SCENARIOS, TutSide } from './tutScript';
@@ -30,7 +38,7 @@ import goatArt from '../assets/goat.svg';
 
 const artImg = (src: string, cls: string): string => `<img class="${cls}" src="${src}" alt="">`;
 
-type Screen = 'menu' | 'side' | 'game' | 'tut' | 'custom';
+type Screen = 'menu' | 'side' | 'game' | 'tut' | 'custom' | 'stats';
 type Mode = 'ai' | 'local';
 
 interface AiResponse {
@@ -68,6 +76,9 @@ export class App {
   private codeErr = false;
   private codeText: string | null = null;
   private codeCopied = false;
+  private store: StatsStore = loadStore();
+  private recordedGame = -1;
+  private unlockedNow: string[] = [];
   private screen: Screen = 'menu';
   private mode: Mode = 'ai';
   private playerSide: Side = 'goat';
@@ -221,6 +232,11 @@ export class App {
         this.render();
         break;
       }
+      case 'stats':
+        this.screen = 'stats';
+        this.sound('tap');
+        this.render();
+        break;
       case 'menu':
         this.sound('tap');
         this.goMenu();
@@ -343,6 +359,7 @@ export class App {
     this.paused = false;
     this.pendingFx = null;
     this.gameId++;
+    this.unlockedNow = [];
     this.screen = 'game';
     this.render();
     this.maybeAi();
@@ -421,7 +438,29 @@ export class App {
 
   private soundIfOver(): void {
     if (!this.engine.outcome) return;
+    this.recordResult();
     this.sound(this.engine.outcome.kind === 'draw' ? 'draw' : 'win');
+  }
+
+  /** Records the finished game once per gameId; persists stats + unlocks. */
+  private recordResult(): void {
+    if (this.recordedGame === this.gameId) return;
+    this.recordedGame = this.gameId;
+    const o = this.engine.outcome;
+    if (!o) return;
+    const ev: GameEvent = {
+      mode: this.mode,
+      difficulty: this.mode === 'ai' ? this.difficulty : null,
+      playerSide: this.mode === 'ai' ? this.playerSide : null,
+      winner: o.kind === 'win' ? o.winner : null,
+      reason: o.reason,
+      plies: this.engine.historyLength,
+      captures: this.engine.current.goatsCaptured,
+    };
+    const r = recordGame(this.store, ev);
+    this.store = r.store;
+    this.unlockedNow = r.unlocked;
+    saveStore(this.store);
   }
 
   private maybeAi(): void {
@@ -694,6 +733,46 @@ export class App {
       </div>`;
   }
 
+  private statsView(): string {
+    const s = this.store.stats;
+    const row = (label: string, value: string): string =>
+      `<div class="stat-row"><span>${label}</span><b>${value}</b></div>`;
+    const base = [
+      row(t('stGames'), num(s.games)),
+      row(t('stWinsGoat'), num(s.winsGoat)),
+      row(t('stWinsTiger'), num(s.winsTiger)),
+      row(t('stDraws'), num(s.draws)),
+      row(t('stAi'), num(s.aiGames)),
+      row(t('stLocal'), num(s.localGames)),
+      row(t('stCaps'), num(s.goatsCaptured)),
+      row(t('stBest'), s.bestWinPlies === null ? '—' : num(s.bestWinPlies)),
+    ].join('');
+    const methods = [
+      row(t('mCaptures'), num(s.winCaptures)),
+      row(t('mBlocked'), num(s.winBlocked)),
+      row(t('mLocked'), num(s.winLocked)),
+      row(t('mSudden'), num(s.winSudden)),
+    ].join('');
+    const ach = ACHIEVEMENTS.map((a) => {
+      const got = a.id in this.store.ach;
+      return `<div class="ach${got ? '' : ' locked'}">
+        <span class="ach-emoji">${got ? a.emoji : '🔒'}</span>
+        <span class="ach-text"><span class="ach-name">${t(a.nameKey)}</span><span class="ach-desc">${t(a.descKey)}</span></span>
+      </div>`;
+    }).join('');
+    return `
+      ${this.controlsView()}
+      <div class="menu stats-menu">
+        <h2 class="stats-h">${t('statsTitle')}</h2>
+        <div class="stats-grid">${base}</div>
+        <div class="stats-label">${t('stMethods')}</div>
+        <div class="stats-grid">${methods}</div>
+        <div class="stats-label">${t('achTitle')}</div>
+        <div class="ach-grid">${ach}</div>
+        <button class="btn btn-ghost" data-act="menu">${t('back')}</button>
+      </div>`;
+  }
+
   private menuView(): string {
     return `
       ${this.controlsView()}
@@ -706,6 +785,7 @@ export class App {
           <button class="btn btn-primary" data-act="pick-ai">${t('modeAI')}</button>
           <button class="btn" data-act="local">${t('modeLocal')}</button>
           <button class="btn" data-act="custom">${t('customOpen')}</button>
+          <button class="btn" data-act="stats">${t('statsOpen')}</button>
           <button class="btn btn-ghost" data-act="tut">${t('tutOpen')}</button>
         </div>
       </div>`;
@@ -881,9 +961,15 @@ export class App {
                  ? artImg(outcome.winner === 'goat' ? goatArt : tigerArt, 'result-art')
                  : '⚖️'
              }</div>
-             <h2>${this.resultText(outcome)}</h2>
-             <p class="reason">${this.reasonText(outcome)}</p>
-             <div class="menu-buttons">
+              <h2>${this.resultText(outcome)}</h2>
+              <p class="reason">${this.reasonText(outcome)}</p>
+              ${this.unlockedNow
+                .map((id) => {
+                  const a = ACHIEVEMENTS.find((x) => x.id === id);
+                  return a ? `<p class="ach-new">${a.emoji} ${t('achNew')} ${t(a.nameKey)}</p>` : '';
+                })
+                .join('')}
+              <div class="menu-buttons">
                <button class="btn btn-primary" data-act="new">${t('newGame')}</button>
                <button class="btn btn-ghost" data-act="menu">${t('menu')}</button>
              </div>
@@ -1037,6 +1123,7 @@ export class App {
     if (this.screen === 'menu') html = this.menuView();
     else if (this.screen === 'side') html = this.sideView();
     else if (this.screen === 'custom') html = this.customView();
+    else if (this.screen === 'stats') html = this.statsView();
     else if (this.screen === 'tut') html = this.tutView();
     else html = this.gameView();
     if (this.tutorial && this.screen === 'menu') html += this.tutorialView();

@@ -66,7 +66,8 @@ body {
 }
 
 /* custom game screen: content-heavy, scrolls when it does not fit */
-#app[data-screen='custom'] {
+#app[data-screen='custom'],
+#app[data-screen='stats'] {
   overflow-y: auto;
 }
 
@@ -216,6 +217,103 @@ body {
   opacity: 0.85;
 }
 
+/* ---------- stats + achievements screen ---------- */
+
+.stats-menu {
+  justify-content: safe center;
+  gap: 10px;
+  padding-top: 34px;
+}
+
+.stats-h {
+  font-size: 24px;
+  margin: 0;
+}
+
+.stats-label {
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.7;
+  width: 100%;
+  max-width: 420px;
+  text-align: left;
+}
+
+.stats-grid {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(243, 233, 216, 0.18);
+  background: rgba(243, 233, 216, 0.06);
+  font-size: 14px;
+}
+
+.stat-row b {
+  font-variant-numeric: tabular-nums;
+}
+
+.ach-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.ach {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(243, 233, 216, 0.25);
+  background: rgba(243, 233, 216, 0.07);
+  text-align: left;
+  min-width: 0;
+}
+
+.ach.locked {
+  opacity: 0.45;
+}
+
+.ach-emoji {
+  font-size: 22px;
+}
+
+.ach-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ach-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ach-desc {
+  font-size: 11px;
+  opacity: 0.75;
+  line-height: 1.25;
+}
+
+.ach-new {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f7b955;
+  margin: 2px 0 0;
+}
+
 /* menu/side screens (data-screen set by render()): pad-bottom mirrors pad-top so
    .menu's centered box sits exactly at viewport middle (safe-top is what makes
    top/bottom differ on phones); controls pin top-right out of flow, same spot
@@ -228,7 +326,8 @@ body {
 
 #app[data-screen='menu'] > .controls,
 #app[data-screen='side'] > .controls,
-#app[data-screen='custom'] > .controls {
+#app[data-screen='custom'] > .controls,
+#app[data-screen='stats'] > .controls {
   position: absolute;
   top: calc(16px + var(--safe-top));
   right: 16px;
@@ -324,7 +423,10 @@ body {
   .pieces-line {
     margin-bottom: 0;
   }
-  /* four menu buttons now: tighten so all fit short viewports */
+  /* five menu buttons now: tighten so all fit short viewports */
+  .menu-buttons {
+    gap: 8px;
+  }
   .menu-buttons .btn {
     padding: 10px 16px;
     font-size: 15px;
