@@ -1,7 +1,9 @@
 import {
+  CLASSIC_RULESET,
   GameState,
   Move,
   Outcome,
+  Ruleset,
   applyMove,
   detectOutcome,
   initialState,
@@ -11,14 +13,16 @@ import {
 } from './rules';
 
 export class GameEngine {
+  readonly rules: Ruleset;
   private state: GameState;
   private counts = new Map<string, number>();
   private stack: { move: Move; state: GameState }[] = [];
   outcome: Outcome | null = null;
 
-  constructor(state: GameState = initialState()) {
-    this.state = state;
-    this.counts.set(positionKey(state), 1);
+  constructor(state?: GameState, rules: Ruleset = CLASSIC_RULESET) {
+    this.rules = rules;
+    this.state = state ?? initialState(rules);
+    this.counts.set(positionKey(this.state), 1);
   }
 
   get current(): GameState {
@@ -34,20 +38,20 @@ export class GameEngine {
   }
 
   legalMoves(): Move[] {
-    return legalMoves(this.state);
+    return legalMoves(this.state, this.rules);
   }
 
   play(move: Move): void {
     if (this.outcome) throw new Error('game already over');
-    const legal = legalMoves(this.state);
+    const legal = legalMoves(this.state, this.rules);
     const found = legal.find((m) => movesMatch(m, move));
     if (!found) throw new Error('illegal move');
     this.stack.push({ move: found, state: this.state });
-    this.state = applyMove(this.state, found);
+    this.state = applyMove(this.state, found, this.rules);
     const key = positionKey(this.state);
     const count = (this.counts.get(key) ?? 0) + 1;
     this.counts.set(key, count);
-    this.outcome = detectOutcome(this.state, count);
+    this.outcome = detectOutcome(this.state, count, undefined, this.rules, this.stack.length);
   }
 
   undo(): void {

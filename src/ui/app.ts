@@ -2,15 +2,26 @@ import { Difficulty } from '../game/ai';
 import { playSound, setSoundEnabled, SoundName } from '../game/audio';
 import { GameEngine } from '../game/engine';
 import {
+  CLASSIC_RULESET,
   GameState,
   Move,
   Outcome,
+  PLY_CAP,
+  Ruleset,
   Side,
   applyMove,
   initialState,
   legalMoves,
 } from '../game/rules';
 import { colOf, rowOf } from '../game/board';
+import {
+  PRESETS,
+  decodeRules,
+  encodeRules,
+  presetFor,
+  sanitizeRules,
+  sameRules,
+} from '../game/presets';
 import { renderBoard, Target } from './boardView';
 import { lang, num, setLang, t } from './i18n';
 import { TUT_SCENARIOS, TutSide } from './tutScript';
@@ -19,7 +30,7 @@ import goatArt from '../assets/goat.svg';
 
 const artImg = (src: string, cls: string): string => `<img class="${cls}" src="${src}" alt="">`;
 
-type Screen = 'menu' | 'side' | 'game' | 'tut';
+type Screen = 'menu' | 'side' | 'game' | 'tut' | 'custom';
 type Mode = 'ai' | 'local';
 
 interface AiResponse {
@@ -51,6 +62,12 @@ function loadBool(key: string, fallback: boolean): boolean {
 export class App {
   private root: HTMLElement;
   private engine = new GameEngine();
+  private rules: Ruleset = CLASSIC_RULESET;
+  private nextRules: Ruleset = CLASSIC_RULESET;
+  private draft: Ruleset = { ...CLASSIC_RULESET };
+  private codeErr = false;
+  private codeText: string | null = null;
+  private codeCopied = false;
   private screen: Screen = 'menu';
   private mode: Mode = 'ai';
   private playerSide: Side = 'goat';
@@ -102,6 +119,7 @@ export class App {
     }
     switch (act) {
       case 'pick-ai':
+        this.nextRules = CLASSIC_RULESET;
         this.screen = 'side';
         this.sound('tap');
         this.render();
@@ -109,13 +127,100 @@ export class App {
       case 'side': {
         const side = el.getAttribute('data-side') as Side;
         this.sound('tap');
-        this.newGame('ai', side);
+        this.newGame('ai', side, this.nextRules);
         break;
       }
       case 'local':
         this.sound('tap');
-        this.newGame('local', 'goat');
+        this.newGame('local', 'goat', CLASSIC_RULESET);
         break;
+      case 'custom':
+        this.draft = { ...CLASSIC_RULESET };
+        this.codeErr = false;
+        this.codeText = null;
+        this.codeCopied = false;
+        this.screen = 'custom';
+        this.sound('tap');
+        this.render();
+        break;
+      case 'custom-ai':
+        this.nextRules = sanitizeRules(this.draft);
+        this.screen = 'side';
+        this.sound('tap');
+        this.render();
+        break;
+      case 'custom-local':
+        this.sound('tap');
+        this.newGame('local', 'goat', sanitizeRules(this.draft));
+        break;
+      case 'preset': {
+        const p = PRESETS.find((x) => x.id === el.getAttribute('data-preset'));
+        if (p) {
+          this.setDraft(p.rules);
+          this.sound('tap');
+          this.render();
+        }
+        break;
+      }
+      case 'step': {
+        const field = el.getAttribute('data-field');
+        const dir = el.getAttribute('data-dir') === '1' ? 1 : -1;
+        const d = { ...this.draft };
+        if (field === 'goats') d.goatCount = Math.min(20, Math.max(5, d.goatCount + dir));
+        else if (field === 'tigers') d.tigerCount = dir > 0 ? 5 : 4;
+        else if (field === 'captures') d.capturesToWin += dir;
+        this.setDraft(d);
+        this.sound('tap');
+        this.render();
+        break;
+      }
+      case 'movement': {
+        const mode = el.getAttribute('data-mode') as Ruleset['movement'];
+        if (mode === 'classic' || mode === 'orthogonal-only' || mode === 'no-backtrack') {
+          this.setDraft({ ...this.draft, movement: mode });
+          this.sound('tap');
+          this.render();
+        }
+        break;
+      }
+      case 'sudden':
+        this.setDraft({ ...this.draft, suddenDeath: !this.draft.suddenDeath });
+        this.sound('tap');
+        this.render();
+        break;
+      case 'code-copy': {
+        const code = encodeRules(this.draft);
+        try {
+          navigator.clipboard?.writeText(code).catch(() => {});
+        } catch {
+          /* clipboard unavailable: code stays selectable in the input */
+        }
+        this.codeCopied = true;
+        this.sound('tap');
+        this.render();
+        window.setTimeout(() => {
+          if (!this.codeCopied) return;
+          this.codeCopied = false;
+          if (this.screen === 'custom') this.render();
+        }, 1500);
+        break;
+      }
+      case 'code-load': {
+        const input = this.root.querySelector<HTMLInputElement>('#codeIn');
+        const raw = input ? input.value : '';
+        const decoded = decodeRules(raw);
+        if (decoded) {
+          this.setDraft(decoded);
+          this.codeErr = false;
+          this.sound('tap');
+        } else {
+          this.codeErr = true;
+        }
+        this.codeText = raw.trim() === '' ? null : raw.trim();
+        if (decoded) this.codeText = null;
+        this.render();
+        break;
+      }
       case 'menu':
         this.sound('tap');
         this.goMenu();
@@ -135,7 +240,7 @@ export class App {
         break;
       case 'new':
         this.sound('tap');
-        this.newGame(this.mode, this.playerSide);
+        this.newGame(this.mode, this.playerSide, this.rules);
         break;
       case 'undo':
         this.doUndo();
@@ -220,11 +325,19 @@ export class App {
     this.render();
   }
 
-  private newGame(mode: Mode, side: Side): void {
+  /** Updates the custom-game draft, keeping the share-code input in sync. */
+  private setDraft(r: Ruleset): void {
+    this.draft = sanitizeRules(r);
+    this.codeText = null;
+    this.codeErr = false;
+  }
+
+  private newGame(mode: Mode, side: Side, rules: Ruleset = this.rules): void {
     this.exitTut();
     this.mode = mode;
     this.playerSide = side;
-    this.engine = new GameEngine();
+    this.rules = rules;
+    this.engine = new GameEngine(initialState(rules), rules);
     this.selected = null;
     this.thinking = false;
     this.paused = false;
@@ -274,7 +387,7 @@ export class App {
       return;
     }
 
-    const move = legalMoves(st).find(
+    const move = legalMoves(st, this.rules).find(
       (m) => (m.kind === 'step' || m.kind === 'jump') && m.from === this.selected && m.to === n,
     );
     if (move) {
@@ -329,6 +442,8 @@ export class App {
         state: this.engine.current,
         difficulty: this.difficulty,
         pastCounts: this.engine.searchCounts(),
+        rules: this.rules,
+        plies: this.engine.historyLength,
       });
     }, 350);
   }
@@ -352,7 +467,7 @@ export class App {
 
   private targets(): Target[] {
     if (this.selected === null) return [];
-    return legalMoves(this.engine.current)
+    return legalMoves(this.engine.current, this.rules)
       .filter((m) => (m.kind === 'step' || m.kind === 'jump') && m.from === this.selected)
       .map((m) =>
         m.kind === 'jump'
@@ -389,13 +504,15 @@ export class App {
     if (o.kind === 'draw') return t('rRepeat');
     switch (o.reason) {
       case 'captures':
-        return t('rCaptures');
+        return t('rCapturesN').replace('{n}', num(this.engine.rules.capturesToWin));
       case 'tiger-blocked':
         return t('rBlocked');
       case 'goats-locked':
         return t('rLocked');
       case 'repetition':
         return t('rRepeat');
+      case 'sudden-death':
+        return t('rSuddenN').replace('{n}', num(this.engine.rules.plyCap ?? PLY_CAP));
     }
   }
 
@@ -588,6 +705,7 @@ export class App {
         <div class="menu-buttons">
           <button class="btn btn-primary" data-act="pick-ai">${t('modeAI')}</button>
           <button class="btn" data-act="local">${t('modeLocal')}</button>
+          <button class="btn" data-act="custom">${t('customOpen')}</button>
           <button class="btn btn-ghost" data-act="tut">${t('tutOpen')}</button>
         </div>
       </div>`;
@@ -611,6 +729,82 @@ export class App {
         <div class="menu-buttons">
           <button class="btn btn-goat" data-act="side" data-side="goat">🐐 ${t('asGoat')}</button>
           <button class="btn btn-tiger" data-act="side" data-side="tiger">🐅 ${t('asTiger')}</button>
+          <button class="btn btn-ghost" data-act="menu">${t('back')}</button>
+        </div>
+      </div>`;
+  }
+
+  private customView(): string {
+    const d = sanitizeRules(this.draft);
+    const esc = (s: string): string =>
+      s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const presetCards = PRESETS.map((p) => {
+      const active = sameRules(p.rules, d) ? ' active' : '';
+      let spec = `🐐${p.rules.goatCount} 🐅${p.rules.tigerCount} ✕${p.rules.capturesToWin}`;
+      if (p.rules.movement === 'orthogonal-only') spec += ' ▦';
+      else if (p.rules.movement === 'no-backtrack') spec += ' ↩';
+      if (p.rules.suddenDeath) spec += ' ⏱';
+      return `<button class="preset-card${active}" data-act="preset" data-preset="${p.id}"><span class="preset-name">${t(p.labelKey)}</span><span class="preset-spec">${spec}</span></button>`;
+    }).join('');
+    const movementChips = (
+      [
+        ['classic', 'mvClassic'],
+        ['orthogonal-only', 'mvOrtho'],
+        ['no-backtrack', 'mvNoBack'],
+      ] as const
+    )
+      .map(
+        ([mode, key]) =>
+          `<button class="chip-btn${d.movement === mode ? ' active' : ''}" data-act="movement" data-mode="${mode}">${t(key)}</button>`,
+      )
+      .join('');
+    const row = (
+      field: string,
+      label: string,
+      value: string,
+      disDec: boolean,
+      disInc: boolean,
+    ): string => `
+      <div class="stepper-row">
+        <span class="stepper-label">${label}</span>
+        <div class="stepper">
+          <button class="step-btn" data-act="step" data-field="${field}" data-dir="-1" ${disDec ? 'disabled' : ''}>−</button>
+          <span class="stepper-val">${value}</span>
+          <button class="step-btn" data-act="step" data-field="${field}" data-dir="1" ${disInc ? 'disabled' : ''}>+</button>
+        </div>
+      </div>`;
+    const capMax = Math.min(10, d.goatCount);
+    const code = this.codeText ?? encodeRules(d);
+    return `
+      ${this.controlsView()}
+      <div class="menu custom-menu">
+        <p class="prompt">${t('customTitle')}</p>
+        <p class="prompt-label">${t('presetsLabel')}</p>
+        <div class="preset-grid">${presetCards}</div>
+        <p class="prompt-label">${t('lblMovement')}</p>
+        <div class="chips">${movementChips}</div>
+        ${row('goats', t('lblGoats'), num(d.goatCount), d.goatCount <= 5, d.goatCount >= 20)}
+        ${row('tigers', t('lblTigers'), num(d.tigerCount), d.tigerCount <= 4, d.tigerCount >= 5)}
+        ${row(
+          'captures',
+          t('lblCaptures'),
+          num(d.capturesToWin),
+          d.capturesToWin <= 1,
+          d.capturesToWin >= capMax,
+        )}
+        <div class="stepper-row">
+          <span class="stepper-label">${t('lblSuddenN').replace('{n}', num(PLY_CAP))}</span>
+          <button class="chip-btn${d.suddenDeath ? ' active' : ''}" data-act="sudden">${d.suddenDeath ? 'ON' : 'OFF'}</button>
+        </div>
+        <div class="code-row">
+          <input id="codeIn" class="code-input selectable" value="${esc(code)}" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="${t('codeLabel')}">
+          <button class="chip-btn${this.codeCopied ? ' active' : ''}" data-act="code-copy">${this.codeCopied ? t('codeCopied') : t('codeCopy')}</button>
+          <button class="chip-btn" data-act="code-load">${t('codeLoad')}</button>
+        </div>
+        ${this.codeErr ? `<p class="code-err">${t('codeInvalid')}</p>` : ''}
+        <div class="menu-buttons">
+          <button class="btn btn-primary" data-act="custom-ai">${t('modeAI')}</button>
+          <button class="btn" data-act="custom-local">${t('modeLocal')}</button>
           <button class="btn btn-ghost" data-act="menu">${t('back')}</button>
         </div>
       </div>`;
@@ -672,8 +866,12 @@ export class App {
       placing,
       last: this.showLastMove ? this.lastMove() : null,
       fx,
+      movement: this.rules.movement,
     });
     const turnArt = st.toMove === 'goat' ? goatArt : tigerArt;
+    const vp = presetFor(this.rules);
+    const variantLabel = vp ? (vp.id === 'classic' ? '' : t(vp.labelKey)) : t('variantCustom');
+    const variant = variantLabel ? `<div class="variant-chip">${variantLabel}</div>` : '';
     const canUndo = !outcome && !this.thinking && this.engine.historyLength > 0;
     const overlay = outcome
       ? `<div class="overlay">
@@ -698,6 +896,7 @@ export class App {
       <div class="game">
         ${this.controlsView(false)}
         <header class="topbar">
+          ${variant}
           <div class="turn ${st.toMove}"><span class="turn-emoji">${artImg(turnArt, 'turn-art')}</span>${this.turnText()}</div>
           <div class="counts">
             <span>🐐 ${t('inHand')} ${num(st.goatsInHand)}</span>
@@ -837,6 +1036,7 @@ export class App {
     let html: string;
     if (this.screen === 'menu') html = this.menuView();
     else if (this.screen === 'side') html = this.sideView();
+    else if (this.screen === 'custom') html = this.customView();
     else if (this.screen === 'tut') html = this.tutView();
     else html = this.gameView();
     if (this.tutorial && this.screen === 'menu') html += this.tutorialView();

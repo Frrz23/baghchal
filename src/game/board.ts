@@ -1,5 +1,6 @@
 export type Piece = 'T' | 'G' | null;
 export type Side = 'tiger' | 'goat';
+export type MovementMode = 'classic' | 'orthogonal-only' | 'no-backtrack';
 
 export const SIZE = 5;
 export const NODE_COUNT = SIZE * SIZE;

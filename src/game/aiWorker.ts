@@ -1,11 +1,13 @@
 import { Difficulty, chooseMove } from './ai';
-import { GameState, Move } from './rules';
+import { GameState, Move, Ruleset } from './rules';
 
 interface Request {
   id: number;
   state: GameState;
   difficulty: Difficulty;
   pastCounts: Map<string, number>;
+  rules: Ruleset;
+  plies: number;
 }
 
 const worker = self as unknown as {
@@ -14,9 +16,9 @@ const worker = self as unknown as {
 };
 
 worker.onmessage = (e: MessageEvent<Request>) => {
-  const { id, state, difficulty, pastCounts } = e.data;
+  const { id, state, difficulty, pastCounts, rules, plies } = e.data;
   try {
-    const move = chooseMove(state, difficulty, pastCounts);
+    const move = chooseMove(state, difficulty, pastCounts, rules, plies);
     worker.postMessage({ id, move });
   } catch (err) {
     console.error('AI failed', err);

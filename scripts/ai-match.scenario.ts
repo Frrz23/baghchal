@@ -2,9 +2,10 @@ import process from 'node:process';
 import { afterAll, test } from 'vitest';
 import { Difficulty, chooseMove } from '../src/game/ai';
 import { GameEngine } from '../src/game/engine';
-import { Outcome, Side } from '../src/game/rules';
+import { PRESETS } from '../src/game/presets';
+import { CLASSIC_RULESET, Outcome, Ruleset, Side } from '../src/game/rules';
 
-type Bucket = 'win-captures' | 'win-blocked' | 'win-locked' | 'draw-repetition' | 'ply-cap';
+type Bucket = 'win-captures' | 'win-blocked' | 'win-locked' | 'win-sudden' | 'draw-repetition' | 'ply-cap';
 
 interface GameResult {
   pairing: string;
@@ -19,6 +20,21 @@ interface GameResult {
 }
 
 const PLY_CAP = 300;
+
+/** MATCH_PRESET selects the ruleset: classic (default) or a preset id. */
+function rulesForRun(): Ruleset {
+  const want = process.env.MATCH_PRESET ?? 'classic';
+  if (want === 'classic') return CLASSIC_RULESET;
+  const p = PRESETS.find((x) => x.id === want);
+  if (!p) {
+    throw new Error(
+      `unknown MATCH_PRESET="${want}" (use one of: classic, ${PRESETS.map((x) => x.id).join(', ')})`,
+    );
+  }
+  return p.rules;
+}
+
+const RULES = rulesForRun();
 
 const PAIRS: [Difficulty, Difficulty][] = [
   ['easy', 'medium'],
@@ -79,6 +95,8 @@ function classify(o: Outcome): Bucket {
       return 'win-blocked';
     case 'goats-locked':
       return 'win-locked';
+    case 'sudden-death':
+      return 'win-sudden';
     default:
       throw new Error(`unexpected win reason: ${o.reason}`);
   }
@@ -92,12 +110,21 @@ async function playGame(
   tiger: Difficulty,
   think: Map<Difficulty, number[]>,
 ): Promise<GameResult> {
-  const engine = new GameEngine();
+  const engine = new GameEngine(undefined, RULES);
+  // sudden-death presets terminate at their own ply cap; give it margin over
+  // the harness watchdog so the ruleset adjudicates instead of the harness flag
+  const harnessCap = RULES.suddenDeath ? (RULES.plyCap ?? 400) + 50 : PLY_CAP;
   const start = nowMs();
-  while (!engine.outcome && engine.historyLength < PLY_CAP) {
+  while (!engine.outcome && engine.historyLength < harnessCap) {
     const diff = engine.current.toMove === 'goat' ? goat : tiger;
     const t0 = nowMs();
-    const move = chooseMove(engine.current, diff, engine.searchCounts());
+    const move = chooseMove(
+      engine.current,
+      diff,
+      engine.searchCounts(),
+      RULES,
+      engine.historyLength,
+    );
     think.get(diff)!.push(nowMs() - t0);
     engine.play(move);
     await tick(); // keep the vitest worker's RPC channel serviced during long searches
@@ -105,9 +132,19 @@ async function playGame(
   const elapsedMs = nowMs() - start;
   if (!engine.outcome) {
     console.warn(
-      `WARN [ply-cap] pairing="${pairing}" game=${game} seed=${seed} goat=${goat} tiger=${tiger} plies=${PLY_CAP}`,
+      `WARN [ply-cap] pairing="${pairing}" game=${game} seed=${seed} goat=${goat} tiger=${tiger} plies=${engine.historyLength}`,
     );
-    return { pairing, game, seed, goat, tiger, winner: null, bucket: 'ply-cap', plies: PLY_CAP, elapsedMs };
+    return {
+      pairing,
+      game,
+      seed,
+      goat,
+      tiger,
+      winner: null,
+      bucket: 'ply-cap',
+      plies: engine.historyLength,
+      elapsedMs,
+    };
   }
   const o = engine.outcome;
   return {
@@ -168,7 +205,8 @@ function roleStats(games: GameResult[]): RoleStats {
 const pct = (x: number, n: number): string => (n === 0 ? 'n/a' : `${((x / n) * 100).toFixed(1)}%`);
 
 test('AI self-play match across difficulties', async () => {
-  console.log(`AI MATCH seeds=[${SEEDS.join(', ')}] (reproduce with MATCH_SEEDS=${SEEDS.join(',')})`);
+  const presetTag = process.env.MATCH_PRESET ?? 'classic';
+  console.log(`AI MATCH preset="${presetTag}" seeds=[${SEEDS.join(', ')}] (reproduce with MATCH_SEEDS=${SEEDS.join(',')})`);
   console.log('note: Easy/Medium are deterministic per seed; Hard is wall-clock bounded (1500ms/move), so games involving Hard may differ across runs');
   console.log('per seed: easy vs medium x2, easy vs hard x2, medium vs hard x2, hard vs hard x1, medium vs medium x1');
 
@@ -246,6 +284,7 @@ test('AI self-play match across difficulties', async () => {
     `win reasons: captures ${overall.dec ? all.filter((g) => g.bucket === 'win-captures').length : 0} (tiger) | ` +
       `goats-locked ${all.filter((g) => g.bucket === 'win-locked').length} (tiger) | ` +
       `tiger-blocked ${all.filter((g) => g.bucket === 'win-blocked').length} (goat) | ` +
+      `sudden-death ${all.filter((g) => g.bucket === 'win-sudden').length} | ` +
       `draw-repetition ${overall.dr} | ply-cap ${overall.pc}`,
   );
   console.log(
@@ -267,7 +306,7 @@ test('AI self-play match across difficulties', async () => {
     return `${d} avg ${avg.toFixed(1)}ms max ${Math.max(...arr).toFixed(0)}ms (${arr.length} moves)`;
   }).join(' | '));
 
-  const order: Bucket[] = ['win-captures', 'win-blocked', 'win-locked', 'draw-repetition', 'ply-cap'];
+  const order: Bucket[] = ['win-captures', 'win-blocked', 'win-locked', 'win-sudden', 'draw-repetition', 'ply-cap'];
   const counts = new Map<Bucket, number>();
   for (const g of all) counts.set(g.bucket, (counts.get(g.bucket) ?? 0) + 1);
   console.log('outcomes: ' + order.map((b) => `${b} ${counts.get(b) ?? 0}`).join(' | '));

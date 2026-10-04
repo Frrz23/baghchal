@@ -35,7 +35,7 @@ if (-not $online) {
 }
 # prefer a physical phone; fall back to an emulator if that's all there is
 $target = $online | Where-Object { $_ -notmatch '^emulator-' } | Select-Object -First 1
-if (-not $target) { $target = $online[0] }
+if (-not $target) { $target = @($online)[0] }
 Write-Host "  target: $target"
 
 Write-Host '[4/4] install + launch'

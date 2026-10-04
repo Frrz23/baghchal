@@ -1,4 +1,4 @@
-import { NODE_COUNT, colOf, connected, rowOf } from '../game/board';
+import { NODE_COUNT, MovementMode, colOf, connected, rowOf } from '../game/board';
 import { GameState, Move } from '../game/rules';
 import tigerArt from '../assets/tiger.svg';
 import goatArt from '../assets/goat.svg';
@@ -25,6 +25,8 @@ export interface BoardOptions {
   placing: boolean;
   last: Move | null;
   fx: Move | null;
+  /** Line drawing: only draw diagonal lines when the movement rules allow them. */
+  movement?: MovementMode;
   /** Tutorial: pulsing guide ring on this node. */
   hint?: number;
   /** Tutorial: shake the guiding ring (hint if present, else the selection ring). */
@@ -51,6 +53,13 @@ export function renderBoard(s: GameState, opts: BoardOptions): string {
   for (let a = 0; a < NODE_COUNT; a++) {
     for (let b = a + 1; b < NODE_COUNT; b++) {
       if (!connected(a, b)) continue;
+      if (
+        opts.movement === 'orthogonal-only' &&
+        rowOf(a) !== rowOf(b) &&
+        colOf(a) !== colOf(b)
+      ) {
+        continue;
+      }
       parts.push(
         `<line class="board-line" x1="${nodeX(a)}" y1="${nodeY(a)}" x2="${nodeX(b)}" y2="${nodeY(b)}"/>`,
       );

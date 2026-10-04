@@ -1,8 +1,10 @@
 import { NEIGHBORS } from './board';
 import {
+  CLASSIC_RULESET,
   GameState,
   Move,
   Outcome,
+  Ruleset,
   applyMove,
   detectOutcome,
   legalMoves,
@@ -15,21 +17,28 @@ const WIN_SCORE = 1_000_000;
 
 const positional: number[] = NEIGHBORS.map((n) => n.length);
 
-function countMoves(s: GameState, side: 'tiger' | 'goat'): number {
-  return legalMoves({ ...s, toMove: side }).length;
+function countMoves(s: GameState, side: 'tiger' | 'goat', rules: Ruleset): number {
+  return legalMoves({ ...s, toMove: side }, rules).length;
 }
 
-function countJumps(s: GameState): number {
-  if (s.toMove !== 'tiger') return legalMoves({ ...s, toMove: 'tiger' }).filter((m) => m.kind === 'jump').length;
-  return legalMoves(s).filter((m) => m.kind === 'jump').length;
+function countJumps(s: GameState, rules: Ruleset): number {
+  if (s.toMove !== 'tiger') {
+    return legalMoves({ ...s, toMove: 'tiger' }, rules).filter((m) => m.kind === 'jump').length;
+  }
+  return legalMoves(s, rules).filter((m) => m.kind === 'jump').length;
 }
 
-function evaluate(s: GameState): number {
-  let score = s.goatsCaptured * 90;
-  score += countMoves(s, 'tiger') * 4;
-  score -= countMoves(s, 'goat') * 1.5;
-  score -= s.goatsInHand * 3;
-  score += countJumps(s) * 6;
+function evaluate(s: GameState, rules: Ruleset): number {
+  // Scale by ruleset; classic (5 captures, 20 goats) keeps the exact v1 weights.
+  // sqrt softens the low-capture-target ramp: linear (5/c) made tigers
+  // hyper-aggressive at 3-4 captures and every short race ended 100% tiger.
+  const captureValue = 90 * Math.sqrt(5 / rules.capturesToWin);
+  const handValue = 3 * (20 / rules.goatCount);
+  let score = s.goatsCaptured * captureValue;
+  score += countMoves(s, 'tiger', rules) * 4;
+  score -= countMoves(s, 'goat', rules) * 1.5;
+  score -= s.goatsInHand * handValue;
+  score += countJumps(s, rules) * 6;
   let tigerPos = 0;
   let goatPos = 0;
   for (let n = 0; n < 25; n++) {
@@ -79,16 +88,18 @@ function search(
   beta: number,
   path: string[],
   ctx: Ctx,
+  rules: Ruleset,
+  basePlies: number,
 ): number {
   checkDeadline(ctx);
   const key = positionKey(s);
-  const moves = legalMoves(s);
+  const moves = legalMoves(s, rules);
   let occurrences = (ctx.past.get(key) ?? 0) + 1;
   for (const k of path) if (k === key) occurrences++;
-  const outcome = detectOutcome(s, occurrences, moves);
+  const outcome = detectOutcome(s, occurrences, moves, rules, basePlies + ply);
   if (outcome) return terminalScore(outcome, ply);
   if (depth === 0) {
-    let v = evaluate(s);
+    let v = evaluate(s, rules);
     if (ctx.noise > 0) v += (Math.random() * 2 - 1) * ctx.noise;
     return v;
   }
@@ -98,7 +109,17 @@ function search(
   if (s.toMove === 'tiger') {
     value = -Infinity;
     for (const m of ordered) {
-      const v = search(applyMove(s, m), depth - 1, ply + 1, alpha, beta, path, ctx);
+      const v = search(
+        applyMove(s, m, rules),
+        depth - 1,
+        ply + 1,
+        alpha,
+        beta,
+        path,
+        ctx,
+        rules,
+        basePlies,
+      );
       if (v > value) value = v;
       if (value > alpha) alpha = value;
       if (alpha >= beta) break;
@@ -106,7 +127,17 @@ function search(
   } else {
     value = Infinity;
     for (const m of ordered) {
-      const v = search(applyMove(s, m), depth - 1, ply + 1, alpha, beta, path, ctx);
+      const v = search(
+        applyMove(s, m, rules),
+        depth - 1,
+        ply + 1,
+        alpha,
+        beta,
+        path,
+        ctx,
+        rules,
+        basePlies,
+      );
       if (v < value) value = v;
       if (value < beta) beta = value;
       if (alpha >= beta) break;
@@ -121,8 +152,10 @@ function chooseAtDepth(
   depth: number,
   ctx: Ctx,
   preferred: Move | null,
+  rules: Ruleset,
+  basePlies: number,
 ): { move: Move; value: number } {
-  const moves = orderMoves(legalMoves(state));
+  const moves = orderMoves(legalMoves(state, rules));
   if (preferred) {
     const idx = moves.findIndex((m) => sameMove(m, preferred));
     if (idx > 0) moves.unshift(...moves.splice(idx, 1));
@@ -133,7 +166,7 @@ function chooseAtDepth(
   let alpha = -Infinity;
   let beta = Infinity;
   for (const m of moves) {
-    const v = search(applyMove(state, m), depth - 1, 1, alpha, beta, path, ctx);
+    const v = search(applyMove(state, m, rules), depth - 1, 1, alpha, beta, path, ctx, rules, basePlies);
     if (state.toMove === 'tiger') {
       if (v > bestValue) {
         bestValue = v;
@@ -167,8 +200,10 @@ export function chooseMove(
   state: GameState,
   difficulty: Difficulty,
   pastCounts: ReadonlyMap<string, number>,
+  rules: Ruleset = CLASSIC_RULESET,
+  plies = 0,
 ): Move {
-  const moves = legalMoves(state);
+  const moves = legalMoves(state, rules);
   if (moves.length === 0) throw new Error('no legal moves');
   if (moves.length === 1) return moves[0];
 
@@ -194,7 +229,7 @@ export function chooseMove(
   let best = moves[0];
   for (let depth = 1; depth <= maxDepth; depth++) {
     try {
-      const result = chooseAtDepth(state, depth, ctx, best);
+      const result = chooseAtDepth(state, depth, ctx, best, rules, plies);
       best = result.move;
     } catch (e) {
       if (e === TIMEOUT) break;
