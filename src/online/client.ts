@@ -37,10 +37,17 @@ export class OnlineConn {
     this.ws = ws;
     ws.onmessage = (e: MessageEvent) => {
       if (typeof e.data !== 'string') return;
+      let m: ServerMsg;
       try {
-        this.h.onMsg(JSON.parse(e.data) as ServerMsg);
+        m = JSON.parse(e.data) as ServerMsg;
       } catch {
-        /* malformed frame: ignore */
+        console.error('online: malformed frame', e.data);
+        return;
+      }
+      try {
+        this.h.onMsg(m);
+      } catch (err) {
+        console.error('online: message handler failed', m.t, err);
       }
     };
     ws.onclose = () => {

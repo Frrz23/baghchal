@@ -35,37 +35,12 @@ try {
   fail(`dev server not reachable at ${BASE} - run \`npm run dev\` first`);
 }
 
-// --- 1. start wrangler dev (room server on 127.0.0.1:8787) ---
-const wrangler = spawn('npx', ['wrangler', 'dev', '--port', String(WRANGLER_PORT)], {
-  shell: process.platform === 'win32',
-  stdio: ['ignore', 'pipe', 'pipe'],
-});
-wrangler.stdout.on('data', (d) => append(d));
-wrangler.stderr.on('data', (d) => append(d));
-function append(d) {
-  try {
-    appendFileSync(WRANGLER_LOG, d);
-  } catch {
-    /* best effort */
-  }
-}
-let wranglerUp = false;
-for (let i = 0; i < 90 && !wranglerUp; i++) {
-  await sleep(1000);
-  try {
-    const r = await fetch(`http://127.0.0.1:${WRANGLER_PORT}/`, { signal: AbortSignal.timeout(800) });
-    if (r.ok) wranglerUp = true;
-  } catch {
-    /* not yet */
-  }
-}
-if (!wranglerUp) {
-  killWrangler();
-  fail(`wrangler dev did not come up on :${WRANGLER_PORT} (see ${WRANGLER_LOG})`);
-}
-console.log('wrangler dev up on :' + WRANGLER_PORT);
-
+// --- 1. start wrangler dev (room server on 127.0.0.1:8787) unless SKIP_WRANGLER
+//        (prod E2E: start dev with VITE_WS_URL=wss://<worker> so the client
+//        talks to the deployed room server instead) ---
+let wrangler = null;
 function killWrangler() {
+  if (!wrangler) return;
   try {
     wrangler.kill();
   } catch {
@@ -78,6 +53,38 @@ function killWrangler() {
       /* best effort */
     }
   }
+}
+function append(d) {
+  try {
+    appendFileSync(WRANGLER_LOG, d);
+  } catch {
+    /* best effort */
+  }
+}
+if (process.env.SKIP_WRANGLER) {
+  console.log('SKIP_WRANGLER set: using the deployed room server');
+} else {
+  wrangler = spawn('npx', ['wrangler', 'dev', '--port', String(WRANGLER_PORT)], {
+    shell: process.platform === 'win32',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  wrangler.stdout.on('data', (d) => append(d));
+  wrangler.stderr.on('data', (d) => append(d));
+  let wranglerUp = false;
+  for (let i = 0; i < 90 && !wranglerUp; i++) {
+    await sleep(1000);
+    try {
+      const r = await fetch(`http://127.0.0.1:${WRANGLER_PORT}/`, { signal: AbortSignal.timeout(800) });
+      if (r.ok) wranglerUp = true;
+    } catch {
+      /* not yet */
+    }
+  }
+  if (!wranglerUp) {
+    killWrangler();
+    fail(`wrangler dev did not come up on :${WRANGLER_PORT} (see ${WRANGLER_LOG})`);
+  }
+  console.log('wrangler dev up on :' + WRANGLER_PORT);
 }
 
 // --- 2. two pages, one profile (localStorage shared: tutorial dismissed once) ---
@@ -92,6 +99,9 @@ const open = async () => {
   const p = await browser.newPage();
   await p.setViewport({ width: 420, height: 850, deviceScaleFactor: 2 });
   p.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  p.on('console', (m) => {
+    if (m.type() === 'error' || m.type() === 'warn') errors.push('console[' + m.type() + ']: ' + m.text());
+  });
   return p;
 };
 const phoneA = await open(); // host: goats
@@ -162,12 +172,20 @@ try {
   console.log('goat placement relayed to guest');
 
   // --- 6. guest (tigers) steps A1→B1, host sees it ---
+  // NOTE: A is the backgrounded page here; rAF-based waitForFunction polling
+  // gets starved on it, so poll on a timer instead.
   await click(phoneB, '[data-node="0"]');
   await click(phoneB, '[data-node="1"]');
-  await phoneA.waitForFunction(
-    () => document.querySelector('.last-move')?.textContent?.includes('A1-B1') === true,
-    { timeout: 8000 },
-  );
+  {
+    const t0 = Date.now();
+    let ok = false;
+    while (Date.now() - t0 < 8000) {
+      const lm = await phoneA.evaluate(() => document.querySelector('.last-move')?.textContent ?? '');
+      if (lm.includes('A1-B1')) { ok = true; break; }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    if (!ok) throw new Error('host never saw tiger step; lm=' + await phoneA.evaluate(() => document.querySelector('.last-move')?.textContent ?? ''));
+  }
   console.log('tiger step relayed to host');
 
   // --- 7. online pause: no local reset button ---
@@ -193,6 +211,17 @@ try {
   passed = true;
 } catch (err) {
   errors.push(String(err));
+  for (const [name, pg] of [['A', phoneA], ['B', phoneB]]) {
+    const diag = await pg
+      .evaluate(() => ({
+        screen: document.querySelector('#app')?.getAttribute('data-screen'),
+        lm: document.querySelector('.last-move')?.textContent,
+        frames: window.__wslog ?? null,
+        body: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 260),
+      }))
+      .catch((e) => String(e));
+    errors.push(`diag ${name}: ${JSON.stringify(diag)}`);
+  }
 } finally {
   await browser.close().catch(() => {});
   killWrangler();

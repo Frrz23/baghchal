@@ -15,7 +15,11 @@ interface SocketMeta {
 }
 
 function send(ws: WebSocket, msg: ServerMsg): void {
-  if (ws.readyState === 1) ws.send(JSON.stringify(msg));
+  if (ws.readyState === 1) {
+    ws.send(JSON.stringify(msg));
+  } else {
+    console.log('drop: socket not open (readyState=' + ws.readyState + ') for ' + msg.t);
+  }
 }
 
 function seatOf(ws: WebSocket): SocketMeta | null {
@@ -60,6 +64,7 @@ export class Room {
   private flush(selfWs: WebSocket | null): void {
     if (!this.core) return;
     for (const ev of this.core.takeQueue()) {
+      console.log('flush target=' + ev.target + ' msg=' + ev.msg.t + ' sockets=' + this.sockets().length);
       if (ev.target === 'self') {
         if (selfWs) send(selfWs, ev.msg);
         continue;
@@ -122,6 +127,7 @@ export class Room {
       return;
     }
     const err = this.core.move(meta.seat, msg.move);
+    console.log('move seat=' + meta.seat + ' move=' + JSON.stringify(msg.move) + ' err=' + err);
     if (err) {
       send(ws, { t: 'error', err });
       return;
