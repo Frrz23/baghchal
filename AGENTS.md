@@ -33,6 +33,13 @@ It closes the Vite dev server (port 5173), kills the emulator, and removes adb
 forwards. Leaving them running heats the laptop badly. Never leave the dev
 server or emulator running between tasks — run checks, then stop, every time.
 
+## RULE: never push to `main`
+
+Do all commits on feature branches (`v2`, …). `main` is only updated when the
+user **explicitly says so in that conversation** — even when the full ladder is
+green and a release looks ready. No fast-forwards, no pushes, no tags on
+`main` without that explicit go-ahead.
+
 ## Verification ladder (before calling a change done)
 
 1. `npm run typecheck`
@@ -80,6 +87,11 @@ server or emulator running between tasks — run checks, then stop, every time.
   `Runtime.callFunctionOn` timeout) when the browser has **two or more
   pages** — multi-page scripts must dispatch clicks in-page
   (`el.dispatchEvent(new MouseEvent('click', …))`); see `scripts/online-smoke.mjs`.
+  Same multi-page rule for waiting: rAF-based `waitForFunction` polling is
+  starved on the *backgrounded* page (host waiting on guest = timeout despite
+  the value being present) — poll on a timer via `page.evaluate` instead.
+- `gh` CLI works after `PATH` refresh in a new shell:
+  `$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')`.
 - Menu is SIX buttons and stats has 13 achievements; short viewports compact
   at `@media (max-height: 700px)` (phones) and `(max-height: 460px)`
   (landscape ~411px) — keep button height ≥ 40px (responsive assert) and
