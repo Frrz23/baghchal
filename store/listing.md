@@ -82,11 +82,11 @@ Screenshots order: 01 menu · 02 side + difficulty · 03 mid-game · 04 pause + 
 
 ## Console settings (M5)
 
-- Package: `np.baghchal.game` (locked) · version 1.0 (versionCode 1)
-- **Versioning: versionCode 1 (r1) is spent on first upload — before every later upload, bump `versionCode` in `android/app/build.gradle` (→ r2, r3…); `release.ps1` derives artifact names automatically (`baghchal-1.0-r2-release.*`). Bump `versionName` only per meaningful update.**
-- Category: Games › Board · Tags: strategy, offline, nepali
+- Package: `np.baghchal.game` (locked) · version 2.0 (versionCode 2)
+- **Versioning: versionCode 1 (r1) was spent on the v1.0 upload — before every later upload, bump `versionCode` in `android/app/build.gradle` (→ r2, r3…); `release.ps1` derives artifact names automatically (`baghchal-2.0-r2-release.*`). Bump `versionName` only per meaningful update.**
+- Category: Games › Board · Tags: strategy, offline, multiplayer, nepali
 - Content rating: complete questionnaire (violence None, multiplayer None, ads None, IAP None)
-- Data safety: no data collected — the app has zero network use and zero permissions
+- Data safety: no accounts, no analytics, no ads — but v2.0 adds **online two-player rooms** (Cloudflare Worker, ephemeral room state, no identity). INTERNET permission is now declared; update the Play Data safety form + multiplayer tag accordingly if publishing v2.0 to Play.
 - Monetization: Free, no ads, no in-app purchases
 - **Privacy policy URL: required by Play Console** — policy drafted in `store/privacy-policy.md`; host it (GitHub Pages → `https://frrz23.github.io/baghchal/privacy-policy`) and paste the URL at M5
 - Play App Signing: enroll **keeping `baghchal-release.jks` as the app-signing key** (see backup README) so direct-share APKs and Play installs stay mutually updatable
